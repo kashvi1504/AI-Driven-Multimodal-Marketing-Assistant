@@ -1,0 +1,18 @@
+pandas
+numpy
+scikit-learn
+matplotlib
+Pillow
+torch
+transformers
+sentencepiece
+datasets
+accelerate
+streamlit
+
+# Optional - the dashboard degrades gracefully with a clear message if
+# any of these are missing (see README "Optional dependencies").
+rembg                    # background removal (Precise Editing page)
+easyocr                  # text detection (Precise Editing page)
+diffusers                # Stable Diffusion (Generative Editing page)
+streamlit-drawable-canvas # Canvas Editor page
