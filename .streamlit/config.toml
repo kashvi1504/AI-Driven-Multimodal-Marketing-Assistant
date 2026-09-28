@@ -1,0 +1,12 @@
+[theme]
+# Force the light theme so the custom styling in 03_dashboard.py looks the
+# same whether the OS/browser is in light or dark mode.
+base = "light"
+primaryColor = "#4F46E5"
+backgroundColor = "#F7F8FB"
+secondaryBackgroundColor = "#EEF0F5"
+textColor = "#14182B"
+font = "sans serif"
+
+[browser]
+gatherUsageStats = false

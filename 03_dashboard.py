@@ -150,6 +150,29 @@ p, span, label, div { color: inherit; }
     padding: 0.85rem !important;
 }
 
+.stTextInput input {
+    border-radius: 10px !important;
+    border: 1px solid #D8DCE3 !important;
+    background-color: #FFFFFF !important;
+    color: #1F2430 !important;
+    caret-color: #1F2430 !important;
+}
+.stTextInput label p, .stToggle label p, [data-testid="stWidgetLabel"] p { color: #374151 !important; }
+
+.note {
+    background: #FFFFFF;
+    border: 1px solid #E5E7EB;
+    border-left: 3px solid #CBD5E1;
+    border-radius: 8px;
+    padding: 0.7rem 1rem;
+    margin: 0.2rem 0 1rem 0;
+    color: #475569;
+    font-size: 0.86rem;
+    line-height: 1.5;
+}
+.note b { color: #1F2430; }
+.note code { font-size: 0.8rem; background: #F1F5F9; padding: 0.05rem 0.3rem; border-radius: 4px; }
+
 .stButton button, .stDownloadButton button {
     border-radius: 9px !important;
     background-color: #4F46E5 !important;
@@ -227,6 +250,11 @@ def eyebrow(text: str) -> None:
 
 def info_card(html_inner: str, style: str = "color:#334155; font-size:0.92rem;") -> None:
     st.markdown(f'<div class="flat-card" style="{style}">{html_inner}</div>', unsafe_allow_html=True)
+
+
+def note(html_inner: str) -> None:
+    """Low-key explanatory note (replaces the bright blue st.info boxes)."""
+    st.markdown(f'<div class="note">{html_inner}</div>', unsafe_allow_html=True)
 
 
 def reason_card(reasons: list) -> None:
@@ -683,12 +711,6 @@ if predictor_error is not None:
     )
     st.stop()
 
-if predictor.using_fallback:
-    st.info(
-        "No fine-tuned model found in `models/best_model` yet — using the public "
-        "**cardiffnlp/twitter-roberta-base-sentiment-latest** model. "
-        "Run `python 02_model_training.py` to use your own fine-tuned model instead."
-    )
 
 # ── Sidebar: grouped navigation + system status ────────────────────────
 NAV = {
@@ -718,6 +740,10 @@ with st.sidebar:
     eyebrow("System")
     status = "Custom fine-tuned model" if not predictor.using_fallback else "Public baseline model"
     st.caption(f"Sentiment model: {status}")
+    if predictor.using_fallback:
+        st.caption("No fine-tuned model in `models/best_model` yet, so the public "
+                   "cardiffnlp/twitter-roberta-base-sentiment-latest model is used. "
+                   "Run `python 02_model_training.py` to use your own.")
     with st.expander("Optional dependencies"):
         for pkg, desc in OPTIONAL_DEPS.items():
             available = importlib.util.find_spec(pkg) is not None
@@ -824,8 +850,8 @@ if mode == "Ad Copy":
 elif mode == "Image Analysis":
     eyebrow("Image engagement")
     st.caption("Evaluate how visually engaging your creative is.")
-    st.info(
-        "This score is a **heuristic**, not a trained/validated model like the sentiment "
+    note(
+        "This score is a <b>heuristic</b>, not a trained/validated model like the sentiment "
         "classifier. There's no real dataset pairing marketing images with actual engagement "
         "outcomes to train or validate against, so this combines a pretrained CLIP model's "
         "semantic judgement with measurable visual properties (brightness, contrast, "
@@ -1115,8 +1141,8 @@ elif mode == "Website Analysis":
 elif mode == "Generative Editing":
     eyebrow("Generative editing")
     st.caption("Restyle an image with a text prompt using Stable Diffusion (img2img).")
-    st.info(
-        "This is **generative AI**, not a pixel tweak — the model reinterprets the whole "
+    note(
+        "This is <b>generative AI</b>, not a pixel tweak — the model reinterprets the whole "
         "image from your prompt, so results vary each time. First run downloads the model "
         "(~4-5GB). On CPU this can take several minutes per image; seconds on a CUDA GPU."
     )
