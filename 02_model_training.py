@@ -9,6 +9,7 @@ inference.
     python 02_model_training.py
 """
 
+import json
 import os
 import sys
 
@@ -77,12 +78,51 @@ def compute_metrics(eval_pred):
     precision, recall, f1, _ = precision_recall_fscore_support(
         labels, preds, average="weighted", zero_division=0
     )
+    _, _, macro_f1, _ = precision_recall_fscore_support(
+        labels, preds, average="macro", zero_division=0
+    )
     return {
         "accuracy": accuracy_score(labels, preds),
         "precision": precision,
         "recall": recall,
         "f1": f1,
+        "macro_f1": macro_f1,
     }
+
+
+def per_source_metrics(raw_test_df: pd.DataFrame, labels, preds) -> pd.DataFrame:
+    """Accuracy / F1 broken down by data source, plus real-vs-synthetic
+    groups. One overall number hides which kind of text the model is
+    good or bad at; this makes it visible."""
+    df = raw_test_df.copy().reset_index(drop=True)
+    df["y_true"], df["y_pred"] = labels, preds
+
+    groups = [(f"source={s}", g) for s, g in df.groupby("source")]
+    if "is_synthetic" in df.columns:
+        synth = df["is_synthetic"].astype(str).str.lower() == "true"
+        groups.append(("ALL real (non-synthetic)", df[~synth]))
+        groups.append(("ALL synthetic", df[synth]))
+    groups.append(("ALL", df))
+
+    rows = []
+    for name, g in groups:
+        if len(g) == 0:
+            continue
+        _, _, wf1, _ = precision_recall_fscore_support(g["y_true"], g["y_pred"], average="weighted", zero_division=0)
+        _, _, mf1, _ = precision_recall_fscore_support(g["y_true"], g["y_pred"], average="macro", zero_division=0)
+        counts = g["y_true"].map(ID2LABEL).value_counts()
+        rows.append({
+            "group": name,
+            "label_method": ", ".join(sorted(g["label_method"].unique())) if "label_method" in g else "",
+            "rows": len(g),
+            "accuracy": round(accuracy_score(g["y_true"], g["y_pred"]), 4),
+            "weighted_f1": round(wf1, 4),
+            "macro_f1": round(mf1, 4),
+            "n_negative": int(counts.get("negative", 0)),
+            "n_neutral": int(counts.get("neutral", 0)),
+            "n_positive": int(counts.get("positive", 0)),
+        })
+    return pd.DataFrame(rows)
 
 
 def save_evaluation_artifacts(trainer, test_dataset, raw_test_df):
@@ -91,12 +131,20 @@ def save_evaluation_artifacts(trainer, test_dataset, raw_test_df):
     labels = predictions.label_ids
 
     report = classification_report(
-        labels, preds, target_names=[ID2LABEL[i] for i in range(NUM_LABELS)]
+        labels, preds, labels=list(range(NUM_LABELS)),
+        target_names=[ID2LABEL[i] for i in range(NUM_LABELS)], zero_division=0,
     )
+    by_source = per_source_metrics(raw_test_df, labels, preds)
+    by_source_path = os.path.join(RESULTS_DIR, "per_source_metrics.csv")
+    by_source.to_csv(by_source_path, index=False)
+
+    header = describe_test_set()
     report_path = os.path.join(RESULTS_DIR, "classification_report.txt")
     with open(report_path, "w") as f:
-        f.write(report)
-    print(f"\n{report}\nSaved -> {report_path}")
+        f.write(header + "\n\nOverall (test set)\n" + report)
+        f.write("\n\nPer-source breakdown\n" + by_source.to_string(index=False) + "\n")
+    print(f"\n{header}\n\n{report}\n{by_source.to_string(index=False)}")
+    print(f"\nSaved -> {report_path}\nSaved -> {by_source_path}")
 
     cm = confusion_matrix(labels, preds)
     class_names = [ID2LABEL[i] for i in range(NUM_LABELS)]
@@ -118,6 +166,21 @@ def save_evaluation_artifacts(trainer, test_dataset, raw_test_df):
     fig.savefig(cm_path)
     plt.close(fig)
     print(f"Saved -> {cm_path}")
+
+
+def describe_test_set() -> str:
+    """One-line statement of what the test set is made of, written at the
+    top of the report so the numbers are never quoted out of context."""
+    path = os.path.join(PROCESSED_DIR, "split_info.json")
+    if not os.path.exists(path):
+        return "Test set composition: unknown (re-run 01_data_preprocessing.py)."
+    with open(path) as f:
+        info = json.load(f)
+    if info.get("eval_is_real_only"):
+        return ("Test set: REAL text only (no synthetic/template rows), sources: "
+                + ", ".join(info.get("test_sources", info.get("eval_sources", []))) + ".")
+    return ("WARNING: test set CONTAINS synthetic template rows because no real "
+            "dataset was available. These metrics are inflated - do not report them.")
 
 
 def main():
@@ -162,7 +225,7 @@ def main():
         eval_strategy="epoch",
         save_strategy="epoch",
         load_best_model_at_end=True,
-        metric_for_best_model="f1",
+        metric_for_best_model="macro_f1",  # macro: every class counts equally
         logging_steps=50,
         seed=SEED,
         report_to="none",
@@ -245,4 +308,4 @@ class SentimentPredictor:
 
 
 if __name__ == "__main__":
-    main()
+    main()

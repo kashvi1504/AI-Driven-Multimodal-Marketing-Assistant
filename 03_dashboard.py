@@ -210,7 +210,6 @@ NEGATIVE_WORDS = {
 }
 CTA_WORDS = {"try", "start", "get", "shop", "buy", "join", "download", "learn", "book", "claim"}
 URGENCY_WORDS = {"now", "today", "limited", "hurry", "last", "deadline", "only"}
-EMOTION_WORDS = ["unlock", "transform", "love", "effortless", "powerful", "unstoppable"]
 
 OPTIONAL_DEPS = {
     "rembg": "Background removal (Precise Editing)",
@@ -471,27 +470,84 @@ def load_local_rewriter():
         return None
 
 
-def force_marketing_rewrite(base_text: str) -> str:
+# ── Grounding / anti-hallucination checks for the rewriter ──────────
+# A rewrite must never invent facts the advertiser didn't give us: no new
+# deadlines ("today only"), prices, discounts, percentages, guarantees or
+# superlative claims. Anything like that is only allowed if it already
+# appears in the original copy or in the optional "offer details" the
+# user typed in. Otherwise the tool would be producing false advertising.
+CLAIM_PHRASES = [
+    "today only", "only today", "limited time", "limited-time", "limited offer",
+    "ends tonight", "ends today", "ends soon", "last chance", "while stocks last",
+    "while supplies last", "act now", "hurry", "this weekend only", "flash sale",
+    "sale", "discount", "off", "free", "free shipping", "guarantee", "guaranteed",
+    "money back", "money-back", "proven", "clinically", "certified", "award",
+    "award-winning", "best-selling", "bestselling", "#1", "number one", "no.1",
+    "exclusive", "bonus", "deal", "coupon", "promo",
+]
+_NUMBER_RE = re.compile(r"[$₹€£]?\d[\d,.:]*\s?(%|percent|x|am|pm|hrs?|hours?|days?|mins?)?", re.I)
+_DATE_WORDS = {
+    "monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday",
+    "tonight", "tomorrow", "weekend", "midnight",
+    "january", "february", "march", "april", "may", "june", "july", "august",
+    "september", "october", "november", "december",
+}
+
+
+def _norm(text: str) -> str:
+    return re.sub(r"\s+", " ", str(text or "")).strip().lower()
+
+
+def extract_claims(text: str) -> set:
+    """Every factual 'claim token' in a piece of copy: numbers/prices/
+    percentages, date or deadline words, and promotional claim phrases."""
+    t = _norm(text)
+    claims = {m.group(0).strip().lower() for m in _NUMBER_RE.finditer(t) if m.group(0).strip()}
+    tokens = set(re.findall(r"[a-z#0-9.'-]+", t))
+    claims |= tokens & _DATE_WORDS
+    for phrase in CLAIM_PHRASES:
+        if " " in phrase or "-" in phrase or "#" in phrase or "." in phrase:
+            if phrase in t:
+                claims.add(phrase)
+        elif phrase in tokens:
+            claims.add(phrase)
+    return claims
+
+
+def find_unsupported_claims(candidate: str, source_text: str, offer_details: str = "") -> list:
+    """Claims present in `candidate` that are NOT backed by the original
+    copy or the user-supplied offer details. Non-empty = hallucination."""
+    allowed_text = _norm(f"{source_text} {offer_details}")
+    allowed = extract_claims(allowed_text)
+    unsupported = []
+    for claim in sorted(extract_claims(candidate)):
+        if claim in allowed or claim in allowed_text:
+            continue
+        unsupported.append(claim)
+    return unsupported
+
+
+def safe_template_rewrite(base_text: str, offer_details: str = "") -> str:
+    """Deterministic fallback rewrite. It only restructures the user's own
+    words and adds a neutral call-to-action. Urgency or offer language
+    appears ONLY if the user supplied it in `offer_details`."""
     core = re.sub(r"\s+", " ", str(base_text or "")).strip().strip(".!?")
-    words = re.findall(r"[A-Za-z0-9']+", core)
-    stop = {"buy", "get", "grab", "it", "the", "a", "an", "and", "or", "for", "to",
-            "with", "before", "ends", "end", "now", "today", "only", "is", "was",
-            "are", "am", "be", "been", "being", "this", "that", "of", "in", "on",
-            "at", "as", "by", "so", "if", "we", "you", "i", "your", "our"}
-    keywords = [w for w in words if w.lower() not in stop] or ["results"]
-    keyword_chunk = " ".join(keywords[:4]).lower()
+    if not core:
+        return ""
+    core = core[0].upper() + core[1:]
 
-    seed = sum(ord(c) for c in core) % 5
-    openers = ["Turn heads with", "Get instant momentum with", "Make your audience stop scrolling with",
-               "Unlock bold results with", "Spark real demand with"]
-    hooks = ["feel the difference", "watch confidence soar", "love the instant impact",
-             "feel unstoppable", "see the transformation"]
-    urgency = ["today only", "limited-time offer", "ends tonight", "act now", "last chance today"]
-    ctas = ["Shop now", "Try now", "Claim your offer", "Start today", "Get yours now"]
+    lowered = core.lower()
+    has_cta = any(re.search(rf"\b{w}\b", lowered) for w in CTA_WORDS)
+    seed = sum(ord(c) for c in core) % 4
+    neutral_ctas = ["Learn more", "Try it", "Find out more", "See how it works"]
 
-    crafted = f"{openers[seed]} {keyword_chunk} - {hooks[(seed+1)%5]}. {urgency[(seed+2)%5]}. {ctas[(seed+3)%5]}!"
-    w = crafted.split()
-    return " ".join(w[:20]).rstrip(",;:-") + "!" if len(w) > 20 else crafted
+    parts = [f"{core}."]
+    offer = re.sub(r"\s+", " ", str(offer_details or "")).strip().strip(".!?")
+    if offer:
+        parts.append(f"{offer[0].upper() + offer[1:]}.")
+    if not has_cta:
+        parts.append(f"{neutral_ctas[seed]}!")
+    return " ".join(parts)
 
 
 def content_relevance_bonus(source_text: str, candidate_text: str) -> float:
@@ -503,86 +559,81 @@ def content_relevance_bonus(source_text: str, candidate_text: str) -> float:
 
 
 def build_candidate_pool(raw_candidates, base_text: str):
-    generic_phrases = {"best solution", "high quality", "best quality", "top notch",
-                        "great product", "click here", "learn more about", "we are excited"}
+    """Light cleanup only. Earlier versions force-appended 'today only',
+    'Try now!' and 'Feel the difference!' to every candidate, which both
+    invented offers and gamed the heuristic score. That is removed: a
+    candidate is kept as the model wrote it, then grounding-checked."""
     pool, seen = [], set()
     for text in raw_candidates:
         cleaned = re.sub(r"\s+", " ", str(text or "")).strip().strip('"').strip("'").replace("\n", " ").strip()
+        cleaned = re.sub(r"[^\w\s,!?.'%$₹€£-]", "", cleaned)
         if not cleaned:
             continue
-        lowered = cleaned.lower()
-        for phrase in generic_phrases:
-            lowered = lowered.replace(phrase, "")
-        cleaned = re.sub(r"\s+", " ", lowered).strip()
-        cleaned = re.sub(r"[^\w\s,!?.'-]", "", cleaned)
-        cleaned = cleaned[0].upper() + cleaned[1:] if cleaned else ""
-
+        cleaned = cleaned[0].upper() + cleaned[1:]
         words = cleaned.split()
-        if len(words) > 20:
-            cleaned = " ".join(words[:20]).rstrip(",;:-") + "!"
-
-        lowered = cleaned.lower()
-        if not any(k in lowered for k in ["today", "limited", "now", "last chance", "ends"]):
-            cleaned = f"{cleaned.rstrip('.!')} today only."
-        if not any(k in lowered for k in ["shop", "try", "start", "buy", "join", "claim", "book", "download", "get"]):
-            cleaned = f"{cleaned.rstrip('.!')} Try now!"
-        if not any(w in cleaned.lower() for w in EMOTION_WORDS):
-            cleaned = f"{cleaned.rstrip('.!')} Feel the difference!"
-
-        cleaned = re.sub(r"\s+", " ", cleaned).strip()
-        if len(cleaned.split()) > 20:
-            cleaned = " ".join(cleaned.split()[:20]).rstrip(",;:-") + "!"
+        if len(words) > 25:
+            cleaned = " ".join(words[:25]).rstrip(",;:-") + "."
         key = cleaned.lower()
-        if key and key not in seen and key != base_text.lower() and abs(len(key) - len(base_text.lower())) >= 4:
+        if key and key not in seen and key != base_text.lower() and len(words) >= 3:
             seen.add(key)
             pool.append(cleaned)
     return pool
 
 
+def _refinement_result(base, text, before, prior, rejected, method):
+    after = predict_engagement(analyze_text_features(text), prior)["engagement_score"]
+    return {
+        "refined_text": text, "before_score": before, "after_score": after,
+        "score_change": after - before, "rejected_candidates": rejected,
+        "unsupported_claims": find_unsupported_claims(text, base),
+        "method": method,
+    }
+
+
 @st.cache_data(show_spinner=False)
-def refine_low_engagement_copy(text: str, sentiment_label: str, engagement_score: float) -> dict:
+def refine_low_engagement_copy(text: str, sentiment_label: str, engagement_score: float,
+                               offer_details: str = "") -> dict:
     base = re.sub(r"\s+", " ", str(text or "")).strip()
+    offer_details = re.sub(r"\s+", " ", str(offer_details or "")).strip()
+    prior = sentiment_prior_from_label(sentiment_label)
     if not base:
-        return {"refined_text": "", "before_score": engagement_score, "after_score": engagement_score, "uplift": 0.0}
+        return {"refined_text": "", "before_score": engagement_score, "after_score": engagement_score,
+                "score_change": 0.0, "rejected_candidates": [], "unsupported_claims": [], "method": "none"}
 
     rewriter = load_local_rewriter()
-    prior = sentiment_prior_from_label(sentiment_label)
     if rewriter is None:
-        fallback = force_marketing_rewrite(base)
-        after = predict_engagement(analyze_text_features(fallback), prior)["engagement_score"]
-        return {"refined_text": fallback, "before_score": engagement_score, "after_score": after, "uplift": after - engagement_score}
+        return _refinement_result(base, safe_template_rewrite(base, offer_details), engagement_score,
+                                  prior, [], "template (no language model loaded)")
 
+    facts = f"Facts you may use: {offer_details}\n" if offer_details else (
+        "There is NO sale, discount, deadline or special offer. Do not mention one.\n")
     prompt = (
-        "You are a high-performance marketing copywriter.\n\n"
-        "Rewrite the following ad copy to maximize engagement and conversions.\n\n"
-        "Rules:\n- Make it catchy and persuasive\n- Add strong emotional appeal\n"
-        "- Include urgency (e.g., limited time, today only)\n- Include a clear call-to-action\n"
-        "- Avoid generic phrases\n- Make it sound like real ad copy (Instagram/Google Ads style)\n"
-        "- Keep it concise (max 20 words)\n\nOriginal copy:\n"
-        f"'{base}'\n\nReturn ONLY the improved version."
+        "Rewrite this ad copy to be clearer and more persuasive, with a call-to-action.\n"
+        "Do not add any prices, numbers, discounts, deadlines, guarantees or claims "
+        "that are not in the original or the facts below. Max 20 words.\n"
+        f"{facts}Original: {base}\nRewrite:"
     )
     try:
-        generated = rewriter(
-            prompt, max_new_tokens=64, do_sample=True,
-            temperature=0.95 if engagement_score < 40 else 0.85,
-            top_p=0.95, num_return_sequences=8,
-        )
+        generated = rewriter(prompt, max_new_tokens=64, do_sample=True, temperature=0.8,
+                             top_p=0.95, num_return_sequences=8)
         candidates = build_candidate_pool([g.get("generated_text", "") for g in generated], base)
-        candidates.append(force_marketing_rewrite(base))
+        candidates.append(safe_template_rewrite(base, offer_details))
 
-        best_text, best_score = base, engagement_score
+        best_text, best_score, rejected = base, float("-inf"), []
         for candidate in candidates:
+            unsupported = find_unsupported_claims(candidate, base, offer_details)
+            if unsupported:
+                rejected.append({"text": candidate, "unsupported": unsupported})
+                continue
             score = predict_engagement(analyze_text_features(candidate), prior)["engagement_score"]
             score += content_relevance_bonus(base, candidate)
             if score > best_score:
                 best_score, best_text = score, candidate
-
-        true_after = predict_engagement(analyze_text_features(best_text), prior)["engagement_score"]
-        return {"refined_text": best_text, "before_score": engagement_score, "after_score": true_after, "uplift": true_after - engagement_score}
+        return _refinement_result(base, best_text, engagement_score, prior, rejected,
+                                  "language model + grounding check")
     except Exception:
-        fallback = force_marketing_rewrite(base)
-        after = predict_engagement(analyze_text_features(fallback), prior)["engagement_score"]
-        return {"refined_text": fallback, "before_score": engagement_score, "after_score": after, "uplift": after - engagement_score}
+        return _refinement_result(base, safe_template_rewrite(base, offer_details), engagement_score,
+                                  prior, [], "template (language model failed)")
 
 
 # ── Cached heavy-model loaders ─────────────────────────────────────────
@@ -684,6 +735,12 @@ if mode == "Ad Copy":
             height=120,
             label_visibility="collapsed",
         )
+        offer_details = st.text_input(
+            "Real offer details (optional)",
+            placeholder="e.g. 20% off until Sunday, free shipping over ₹999",
+            help="The rewrite may only mention prices, discounts, deadlines or guarantees that "
+                 "appear in your copy or here. Leave blank if there is no offer.",
+        )
     with col2:
         st.markdown("<br>", unsafe_allow_html=True)
         run_btn = st.button("Analyze", use_container_width=True, type="primary")
@@ -733,16 +790,24 @@ if mode == "Ad Copy":
         st.caption("Based on the heuristic scoring rules below (keyword/length checks), not a trained engagement model.")
         reason_card(eng["reasons"])
 
-        refinement = refine_low_engagement_copy(user_text, label, eng["engagement_score"])
+        refinement = refine_low_engagement_copy(user_text, label, eng["engagement_score"], offer_details)
         eyebrow("Suggested rewrite")
         st.code(refinement["refined_text"], language="text")
         st.caption(
-            f"Heuristic engagement score — before {refinement['before_score']:.0f}/100 · "
+            f"Heuristic score (not a measured result) — before {refinement['before_score']:.0f}/100 · "
             f"after {refinement['after_score']:.0f}/100 · "
-            f"uplift {refinement['uplift']:+.0f}"
+            f"change {refinement['score_change']:+.0f} · method: {refinement['method']}"
         )
-        if refinement["uplift"] <= 0:
-            st.caption("Predicted uplift is limited for this input.")
+        st.caption(
+            "✓ Grounding check passed: the rewrite adds no prices, discounts, deadlines or "
+            "guarantees beyond your copy and offer details."
+            if not find_unsupported_claims(refinement["refined_text"], user_text, offer_details)
+            else "⚠ Rewrite contains claims not found in your input — review before using."
+        )
+        if refinement["rejected_candidates"]:
+            with st.expander(f"{len(refinement['rejected_candidates'])} generated rewrite(s) rejected for invented claims"):
+                for r in refinement["rejected_candidates"]:
+                    st.markdown(f"- {r['text']}  \n  *unsupported:* `{', '.join(r['unsupported'])}`")
 
         eyebrow("Recommendation")
         if label == "negative":
@@ -860,13 +925,17 @@ elif mode == "Bulk Analysis":
             feature_rows = [analyze_text_features(t) for t in texts]
             df["sentiment_reason"] = [explain_sentiment(r, f) for r, f in zip(results, feature_rows)]
             engagement_rows = [predict_engagement(f, r) for r, f in zip(results, feature_rows)]
-            refined_rows = [refine_low_engagement_copy(t, r["label"], e["engagement_score"]) for t, r, e in zip(texts, results, engagement_rows)]
+            offer_col = next((c for c in df.columns if c.lower() in {"offer", "offer_details"}), None)
+            offers = df[offer_col].fillna("").astype(str).tolist() if offer_col else [""] * len(texts)
+            refined_rows = [refine_low_engagement_copy(t, r["label"], e["engagement_score"], o)
+                            for t, r, e, o in zip(texts, results, engagement_rows, offers)]
             df["heuristic_engagement_score"] = [e["engagement_score"] for e in engagement_rows]
             df["engagement_label"] = [e["engagement_label"] for e in engagement_rows]
             df["engagement_reason"] = [" | ".join(e["reasons"]) for e in engagement_rows]
             df["refined_text"] = [x["refined_text"] for x in refined_rows]
             df["refined_heuristic_engagement_score"] = [x["after_score"] for x in refined_rows]
-            df["heuristic_engagement_uplift"] = [x["uplift"] for x in refined_rows]
+            df["heuristic_score_change"] = [x["score_change"] for x in refined_rows]
+            df["rewrites_rejected_for_invented_claims"] = [len(x["rejected_candidates"]) for x in refined_rows]
             progress.empty()
 
             counts = df["sentiment"].value_counts().reindex(["positive", "neutral", "negative"], fill_value=0)
@@ -899,7 +968,7 @@ elif mode == "Bulk Analysis":
 
             st.dataframe(df[[text_col, "sentiment", "confidence"]].head(50), use_container_width=True)
             eyebrow("Heuristic engagement preview")
-            st.dataframe(df[[text_col, "engagement_label", "heuristic_engagement_score", "refined_heuristic_engagement_score", "heuristic_engagement_uplift"]].head(50), use_container_width=True)
+            st.dataframe(df[[text_col, "engagement_label", "heuristic_engagement_score", "refined_heuristic_engagement_score", "heuristic_score_change"]].head(50), use_container_width=True)
             eyebrow("Refined text")
             st.dataframe(
                 df[[text_col, "refined_text"]].head(50),
