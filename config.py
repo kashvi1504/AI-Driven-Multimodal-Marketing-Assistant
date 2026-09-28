@@ -84,3 +84,48 @@ MODEL_NAME = os.environ.get("SENTIMENT_MODEL_NAME", "distilbert-base-uncased")
 
 MAX_LENGTH = 128
 SEED = 42
+
+# ── Instagram authenticity audit (08_instagram_audit.py) ─────────────
+INSTAGRAM_AUDIT = {
+    "raw_file": os.environ.get("INSTAGRAM_RAW_FILE", "instagram_influencer.csv"),  # in data/raw/
+    "out_dir": os.path.join(RESULTS_DIR, "instagram_audit"),
+    "min_rows": 30,
+    # candidate column names (lower-case, spaces/hyphens -> underscore)
+    "columns": {
+        "likes": ["likes", "like_count", "likes_count", "n_likes", "num_likes", "number_of_likes"],
+        "comments": ["comments", "comment_count", "comments_count", "n_comments", "num_comments", "number_of_comments"],
+        "followers": ["followers", "follower_count", "followers_count", "n_followers", "num_followers", "number_of_followers"],
+        "timestamp": ["timestamp", "date", "datetime", "created_at", "posted_at", "taken_at", "post_date", "time", "upload_date"],
+        "caption": ["caption", "text", "description", "post_text", "post_caption"],
+        "image": ["image", "image_path", "image_file", "image_url", "img", "img_path", "filename", "file_name", "media_url", "display_url"],
+        "group": ["username", "user", "account", "owner", "influencer", "handle", "profile", "category", "niche"],
+    },
+    "thresholds": {
+        "uniform_band": (0.95, 1.05), "uniform_band_warn": (0.85, 1.15), "min_skew": 1.0,
+        "benford_p_fail": 0.01, "benford_p_warn": 0.05,
+        "benford_mad_fail": 0.015, "benford_mad_warn": 0.012, "benford_min_span": 2.0,
+        "corr_pass": 0.3, "corr_warn": 0.1,
+        "ratio_over1_warn": 0.05, "ratio_over1_fail": 0.25,
+        "eng_over1_warn": 0.05, "eng_over1_fail": 0.20,
+        "likes_gt_f_warn": 0.05, "likes_gt_f_fail": 0.25,
+        "future_fail": 0.01,
+        "dup_caption_warn": 0.10, "dup_caption_fail": 0.50,
+        "dup_image_warn": 0.01, "dup_image_fail": 0.10,
+        "group_spread_fail": 1.3, "group_eta_warn": 0.05,
+    },
+}
+
+# ── Website SEO/GEO analysis (09_website_analysis.py) ─────────────────
+WEBSITE_ANALYSIS = {
+    "timeout": 12,                 # seconds per HTTP request
+    "user_agent": ("SentimentStudio-SEO-GEO-Audit/1.0 "
+                   "(+https://github.com/kashvi1504/AI-Driven-Multimodal-Marketing-Assistant)"),
+    "max_link_checks": 20,         # links sampled for the broken-link check
+    "max_bytes": 5_000_000,        # refuse pages larger than this
+    # Optional: Google PageSpeed Insights works without a key but is rate-limited.
+    # Get a free key at https://developers.google.com/speed/docs/insights/v5/get-started
+    "pagespeed_api_key": os.environ.get("PAGESPEED_API_KEY", ""),
+    "pagespeed_strategy": os.environ.get("PAGESPEED_STRATEGY", "mobile"),  # or "desktop"
+    "pagespeed_timeout": 90,
+    "ai_crawlers": ["GPTBot", "ClaudeBot", "PerplexityBot", "Google-Extended"],
+}

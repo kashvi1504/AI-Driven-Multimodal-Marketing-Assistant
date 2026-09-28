@@ -9,6 +9,9 @@ sentencepiece
 datasets
 accelerate
 streamlit
+scipy                    # 08_instagram_audit.py
+requests                 # 09_website_analysis.py
+beautifulsoup4           # 09_website_analysis.py
 
 # Optional - the dashboard degrades gracefully with a clear message if
 # any of these are missing (see README "Optional dependencies").

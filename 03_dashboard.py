@@ -16,6 +16,7 @@ Pages, grouped by what they do (see README.md for the full breakdown):
 
 import importlib.util
 import io
+import json
 import os
 import re
 
@@ -691,7 +692,7 @@ if predictor.using_fallback:
 
 # ── Sidebar: grouped navigation + system status ────────────────────────
 NAV = {
-    "Analyze": ["Ad Copy", "Image Analysis", "Bulk Analysis"],
+    "Analyze": ["Ad Copy", "Image Analysis", "Bulk Analysis", "Website Analysis"],
     "Create & Edit": ["Generative Editing", "Precise Editing", "Canvas Editor"],
 }
 
@@ -978,6 +979,135 @@ elif mode == "Bulk Analysis":
                 },
             )
             st.download_button("Download results CSV", df.to_csv(index=False).encode(), "sentiment_results.csv", "text/csv")
+
+# ══════════════════════════════════════════════════════════════════════
+# Analyze > Website Analysis (SEO / GEO)
+# ══════════════════════════════════════════════════════════════════════
+elif mode == "Website Analysis":
+    eyebrow("Website SEO / GEO")
+    st.caption("Checklist audit of a single web page: search-engine basics (SEO), signals that help AI answer "
+               "engines read and cite it (GEO), Google performance data and the tone of its copy.")
+
+    missing = [p for p in ("requests", "bs4") if importlib.util.find_spec(p) is None]
+    if missing:
+        friendly_error("Website Analysis needs extra packages.",
+                       "Run `pip install requests beautifulsoup4` and restart the app.")
+        st.stop()
+    try:
+        _website = _load_module_by_path("website_analysis", "09_website_analysis.py")
+    except Exception as e:
+        friendly_error("Couldn't load 09_website_analysis.py.", "Check the file exists next to 03_dashboard.py.", e)
+        st.stop()
+
+    @st.cache_data(show_spinner=False, ttl=3600)
+    def cached_website_analysis(url: str, run_pagespeed: bool, run_sentiment: bool) -> dict:
+        return _website.analyze_url(url, run_pagespeed=run_pagespeed, run_sentiment=run_sentiment,
+                                    predictor=predictor if run_sentiment else None)
+
+    c1, c2 = st.columns([3, 1])
+    with c1:
+        site_url = st.text_input("Page URL", placeholder="e.g. https://www.example.com/pricing",
+                                 label_visibility="collapsed")
+    with c2:
+        run_site = st.button("Analyze page", use_container_width=True, type="primary")
+    o1, o2 = st.columns(2)
+    with o1:
+        use_psi = st.toggle("Include Google PageSpeed (slower, ~30-60 s)", value=True)
+    with o2:
+        use_sent = st.toggle("Include copy sentiment", value=True)
+
+    if run_site and site_url.strip():
+        with st.spinner("Fetching page and running checks..."):
+            try:
+                st.session_state["website_result"] = cached_website_analysis(site_url.strip(), use_psi, use_sent)
+            except _website.WebsiteAnalysisError as e:
+                st.session_state.pop("website_result", None)
+                friendly_error("Couldn't analyse that page.", str(e))
+            except Exception as e:
+                st.session_state.pop("website_result", None)
+                friendly_error("Something went wrong while analysing the page.", "Try again or another URL.", e)
+
+    res = st.session_state.get("website_result")
+    if res:
+        st.caption(f"Analysed **{res['final_url']}** · {res['word_count']} words of main content · {res['fetched_at']} UTC"
+                   + (f" · redirected from {res['redirect_chain'][0]}" if res["redirect_chain"] else ""))
+
+        def tier_of(score):
+            if score is None:
+                return None
+            return "high" if score >= 80 else "medium" if score >= 50 else "low"
+
+        k1, k2, k3 = st.columns(3)
+        for col, key, title, heur in ((k1, "seo", "SEO score", True), (k2, "geo", "GEO score", True),
+                                      (k3, "performance", "Performance", False)):
+            sc, t = res["scores"][key], tier_of(res["scores"][key])
+            with col:
+                if t is None:
+                    kpi_card(title, "UNAVAILABLE", "#F1F5F9", "#475569",
+                             (res["performance"].get("error") or "Not run")[:90])
+                else:
+                    kpi_card(title, QUALITY_LABELS[t], TIER_BG[t], TIER_COLORS[t], f"Score {sc} / 100",
+                             footnote="Google Lighthouse lab score" if key == "performance" else "Weighted checklist",
+                             heuristic=heur)
+        st.caption(res["score_note"])
+
+        checks = res["checks"]
+        to_fix = [c for c in checks if c["status"] in ("fail", "warn")]
+        eyebrow("Top fixes")
+        if to_fix:
+            order = {"fail": 0, "warn": 1}
+            reason_card([f"<b>{c['category']} · {c['name']}</b> ({c['status']}): {c['fix']}"
+                         for c in sorted(to_fix, key=lambda c: order[c["status"]])[:6]])
+        else:
+            info_card("Every check passed.")
+
+        perf = res["performance"]
+        if perf.get("available"):
+            eyebrow(f"Core Web Vitals ({perf.get('strategy', 'mobile')})")
+            v1, v2, v3 = st.columns(3)
+            rating_tier = {"good": "high", "needs improvement": "medium", "poor": "low"}
+            for col, k, name in ((v1, "lcp_ms", "LCP · loading"), (v2, "cls", "CLS · visual stability"),
+                                 (v3, "inp_ms", "INP · responsiveness")):
+                v = perf["vitals"][k]
+                with col:
+                    if v["value"] is None:
+                        kpi_card(name, "NO DATA", "#F1F5F9", "#475569", "Not enough real-user data")
+                    else:
+                        t = rating_tier[v["rating"]]
+                        val = f"{v['value']:.3f}" if k == "cls" else f"{v['value']:.0f} ms"
+                        kpi_card(name, v["rating"].upper(), TIER_BG[t], TIER_COLORS[t], val,
+                                 footnote=f"{v['source']} data")
+
+        sent = res["sentiment"]
+        eyebrow("Tone of the page copy")
+        if sent.get("available"):
+            s = sent["scores"]
+            info_card(f"Mostly <b>{sent['label']}</b> ({sent['confidence']:.0%}) across {sent['chunks']} text chunks · "
+                      f"positive {s['positive']:.0%}, neutral {s['neutral']:.0%}, negative {s['negative']:.0%}.")
+        else:
+            info_card(sent.get("error", "Not run."))
+
+        with st.expander(f"All {len(checks)} checks with fix suggestions", expanded=False):
+            icon = {"pass": "✅ pass", "warn": "⚠️ warn", "fail": "❌ fail", "skip": "○ skip"}
+            st.dataframe(
+                pd.DataFrame([{"Area": c["category"], "Check": c["name"], "Result": icon.get(c["status"], c["status"]),
+                               "Value": str(c["value"]), "Details": c["detail"], "How to fix": c["fix"]}
+                              for c in checks]),
+                use_container_width=True, hide_index=True,
+                column_config={"Details": st.column_config.TextColumn(width="large"),
+                               "How to fix": st.column_config.TextColumn(width="large")},
+            )
+        with st.expander("How the scores are calculated"):
+            st.markdown(
+                "Each check scores **pass = 1, warn = 0.5, fail = 0**, multiplied by its weight; checks that "
+                "couldn't run are left out. Score = weighted points ÷ weights that ran × 100.  \n"
+                f"**SEO weights:** {', '.join(f'{k} {v}' for k, v in res['weights']['seo'].items())}  \n"
+                f"**GEO weights:** {', '.join(f'{k} {v}' for k, v in res['weights']['geo'].items())}  \n"
+                "These are checklists, not predictions of search ranking or AI citations."
+            )
+        st.download_button("Download full results (JSON)",
+                           json.dumps(res, indent=2, default=str).encode(),
+                           "website_analysis.json", "application/json")
 
 # ══════════════════════════════════════════════════════════════════════
 # Create & Edit > Generative Editing

@@ -19,6 +19,8 @@ raw data, one script per stage, one config file.
 | Canvas editor | **Implemented** | `streamlit-drawable-canvas` (crop/draw/text-box/flatten) |
 | Pitt Ads dataset loading | **Implemented, loading only** | `07_pitt_ads_loader.py` - schema-agnostic loader, no engagement model built on it yet |
 | Pitt Ads → Instagram engagement model | **Planned, not implemented** | See "Planned" section below - deliberately not built yet |
+| Instagram dataset authenticity audit | **Implemented, statistical checks** | `08_instagram_audit.py` - distribution, Benford, consistency and duplicate checks before any modelling |
+| Website SEO/GEO analysis | **Implemented, heuristic checklist** | `09_website_analysis.py` + "Website Analysis" dashboard page; Google PageSpeed Insights for performance |
 
 ## File structure
 
@@ -31,6 +33,8 @@ config.py                    ← every path/setting lives here
 05_generative_editing.py     ← Stable Diffusion img2img editing
 06_image_editing.py          ← precise background swap (rembg) + text replace (easyocr)
 07_pitt_ads_loader.py        ← Pitt Ads dataset loading interface (planned integration, see below)
+08_instagram_audit.py        ← authenticity audit for the Instagram dataset (run before modelling)
+09_website_analysis.py       ← single-page SEO/GEO/performance audit (CLI + dashboard page)
 Requirements.txt
 data/
 ├── raw/                     ← put the downloaded CSVs here (see below)
@@ -282,6 +286,90 @@ documented methodological choice, not an oversight.
 | Precise Editing → text detection | `easyocr` | That action shows a friendly error with an install hint |
 | Canvas Editor page | `streamlit-drawable-canvas` | Page shows an install hint instead of the canvas |
 
+## Website SEO/GEO analysis
+
+`09_website_analysis.py` audits **one web page** for three things:
+**SEO** (search engine optimisation), **GEO** (generative engine
+optimisation, i.e. how easy the page is for AI answer engines such as
+ChatGPT, Perplexity and Google AI Overviews to read, trust and cite) and
+**performance**. It also runs the project's sentiment model over the
+page copy. Use it from the **Website Analysis** dashboard page, or from
+the command line:
+
+```bash
+python 09_website_analysis.py https://example.com
+python 09_website_analysis.py example.com --no-pagespeed --no-sentiment
+python 09_website_analysis.py https://example.com --json results/example.json
+```
+
+### SEO checks
+
+| Check | Pass | Warn | Fail |
+|---|---|---|---|
+| Title tag | 30–60 characters | present, other length | missing |
+| Meta description | 70–160 characters | present, other length | missing |
+| Single H1 | exactly one | more than one | none |
+| Heading order | starts at h1, no skipped levels | 1–2 skips (e.g. h2→h4) | 3+ skips / no headings |
+| Image alt text | ≥ 90% of images have `alt` | 50–89% | < 50% |
+| Canonical tag | `rel=canonical` present | missing | – |
+| Mobile viewport | viewport meta present | – | missing |
+| HTTPS | final URL is https | – | http |
+| Broken links | 0 broken in a sample of up to 20 | 1–2 broken | 3+ broken |
+| Word count (main content) | ≥ 300 words | 100–299 | < 100 |
+
+Links answering 401/403/429 are reported as "refused automated checks",
+not as broken, because many sites block bots rather than being broken.
+
+### GEO checks
+
+The GEO checks are based on Aggarwal et al., *"GEO: Generative Engine
+Optimization"* (KDD 2024, arXiv:2311.09735). The paper found that adding
+**citations, quotations and statistics** were among the content changes
+that most improved a source's visibility in generative-engine answers.
+
+| Check | What it looks for |
+|---|---|
+| Structured data | schema.org JSON-LD blocks, and which types (Organization, Article, FAQPage…) |
+| FAQ / question headings | question-style headings (`How…?`, `What…?`) or FAQPage schema |
+| Statistics & numbers | percentages, amounts and figures in the main copy |
+| Outbound citations | links to other domains (sources the page cites) |
+| Quotations | `<blockquote>`/`<q>` or quoted sentences |
+| Author & date | author and published/updated date in metadata, JSON-LD or `<time>` |
+| AI crawler access | whether `robots.txt` blocks GPTBot, ClaudeBot, PerplexityBot or Google-Extended |
+
+### Performance
+
+Performance comes from Google's free **PageSpeed Insights** API: the
+Lighthouse performance score (0–100) plus Core Web Vitals — LCP
+(loading), CLS (visual stability) and INP (responsiveness). The module
+uses real-user "field" data when Google has it for the site, otherwise
+Lighthouse "lab" data, and labels which one was used. INP only exists as
+field data, so small sites often show "no data" for it. The API works
+without a key but is rate-limited; set `PAGESPEED_API_KEY` (read in
+`config.py`) for reliable use. If the call fails, the section says
+"unavailable" and the rest of the audit still runs.
+
+### Scoring — what "heuristic" means here
+
+The SEO and GEO scores are **weighted checklist scores**. Each check
+earns pass = 1, warn = 0.5, fail = 0 points, multiplied by its weight.
+Score = points ÷ weights of the checks that ran × 100. The weights live
+in `SEO_WEIGHTS` / `GEO_WEIGHTS` at the top of `09_website_analysis.py`
+and are a documented judgement call, not fitted to data. **They do not
+predict search rankings or AI citations** — no ranking or citation data
+is used anywhere. Only the performance score is Google's own
+measurement.
+
+### Limits
+
+- **Single page only** — not a site crawl; other pages may differ.
+- **No ranking, traffic or citation data** — it checks the page, not how
+  it performs in search or AI answers.
+- **JavaScript-rendered content may be missed** — the page is fetched as
+  raw HTML, so content that only appears after JavaScript runs isn't seen.
+- Sites that block bots (HTTP 403/429) can't be audited.
+- Broken-link checking samples at most 20 links.
+
 ## Planned: Pitt Ads + Instagram engagement integration
 
 We're extending the image-analysis component with two additional
@@ -339,6 +427,7 @@ engagement scores.
 - **Ad Copy** — sentiment + heuristic engagement + explanation + rewrite suggestion for one piece of copy.
 - **Image Analysis** — heuristic engagement score for an uploaded image, visual-feature breakdown, and deterministic style presets (auto-fix, warm tone, punchy, etc.) with before/after comparison.
 - **Bulk Analysis** — same sentiment/engagement pipeline over a CSV of copy.
+- **Website Analysis** — SEO / GEO checklist, Core Web Vitals and copy sentiment for one web page (see "Website SEO/GEO analysis").
 
 **Create & Edit**
 - **Generative Editing** — Stable Diffusion img2img restyling from a text prompt.
