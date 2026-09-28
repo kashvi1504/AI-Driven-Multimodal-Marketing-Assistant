@@ -1,0 +1,4 @@
+group,label_method,rows,accuracy,weighted_f1,macro_f1,n_negative,n_neutral,n_positive
+source=hf_sentiment,provided_3class,2400,0.8571,0.8571,0.857,809,782,809
+ALL real (non-synthetic),provided_3class,2400,0.8571,0.8571,0.857,809,782,809
+ALL,provided_3class,2400,0.8571,0.8571,0.857,809,782,809

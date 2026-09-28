@@ -1,0 +1,19 @@
+Test set: REAL text only (no synthetic/template rows), sources: hf_sentiment.
+
+Overall (test set)
+              precision    recall  f1-score   support
+
+    negative       0.85      0.85      0.85       809
+     neutral       0.84      0.86      0.85       782
+    positive       0.88      0.87      0.87       809
+
+    accuracy                           0.86      2400
+   macro avg       0.86      0.86      0.86      2400
+weighted avg       0.86      0.86      0.86      2400
+
+
+Per-source breakdown
+                   group    label_method  rows  accuracy  weighted_f1  macro_f1  n_negative  n_neutral  n_positive
+     source=hf_sentiment provided_3class  2400    0.8571       0.8571     0.857         809        782         809
+ALL real (non-synthetic) provided_3class  2400    0.8571       0.8571     0.857         809        782         809
+                     ALL provided_3class  2400    0.8571       0.8571     0.857         809        782         809
