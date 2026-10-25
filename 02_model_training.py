@@ -3,7 +3,7 @@
 ---------------------
 Fine-tunes a transformer on the processed data from step 1, evaluates it,
 and saves the best checkpoint. Also exposes SentimentPredictor - the one
-class every other module (fusion, copywriting, dashboard) imports to run
+class every other module (fusion, copywriting, web app) imports to run
 inference.
 
     python 02_model_training.py
@@ -251,7 +251,7 @@ def main():
     print(f"\nSaving best model -> {MODEL_DIR}")
     trainer.save_model(MODEL_DIR)
     tokenizer.save_pretrained(MODEL_DIR)
-    print("Done. Next: streamlit run 03_dashboard.py")
+    print("Done. Next: python 03_web_app.py")
 
 
 # ── Shared inference class ───────────────────────────────────────────
@@ -265,7 +265,7 @@ class SentimentPredictor:
         # -> [{"label": "positive", "confidence": 0.94, "scores": {...}}]
 
     Falls back to the public cardiffnlp checkpoint if no fine-tuned
-    model is found at model_path, so the dashboard never hard-crashes
+    model is found at model_path, so the web app never hard-crashes
     just because training hasn't been run yet.
     """
 
@@ -308,4 +308,4 @@ class SentimentPredictor:
 
 
 if __name__ == "__main__":
-    main()
+    main()

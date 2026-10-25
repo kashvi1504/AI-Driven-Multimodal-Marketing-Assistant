@@ -24,8 +24,8 @@ GEO checks below look for those signals, plus the machine-readable
 structure (schema.org JSON-LD, clear author/date, crawler access) that
 lets an engine read and attribute a page in the first place.
 
-This module does not import Streamlit, so it works from the command line
-and from 03_dashboard.py ("Website Analysis" page) alike.
+This module has no web-framework imports, so it works from the command line
+and from 03_web_app.py ("Website Audit" page) alike.
 """
 
 import argparse

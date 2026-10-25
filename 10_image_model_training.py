@@ -56,7 +56,8 @@ import config
 CFG = config.IMAGE_ENGAGEMENT
 COLS = config.INSTAGRAM_AUDIT["columns"]
 SEED = config.SEED
-VIS_KEYS = ["brightness", "contrast", "saturation", "sharpness", "width", "height", "aspect_ratio"]
+VIS_KEYS = ["width", "height", "aspect_ratio", "brightness", "shadows", "highlights", "dynamic_range",
+            "saturation", "blur", "blur_global", "noise"]
 C_GRID = [0.001, 0.01, 0.1, 1.0]
 
 
@@ -227,7 +228,9 @@ def embed(paths: list) -> tuple[dict, np.ndarray, float]:
     cache, txt, scale = {}, None, None
     if os.path.exists(cache_path):
         z = np.load(cache_path, allow_pickle=False)
-        if str(z["model"]) == CFG["clip_model"]:
+        # features/prompts changed in 04 -> the cache is stale, rebuild it
+        if (str(z["model"]) == CFG["clip_model"] and "vis_keys" in z and list(z["vis_keys"]) == VIS_KEYS
+                and list(z["prompts"]) == _prompts()):
             cache = {p: (e, v) for p, e, v in zip(z["paths"], z["emb"], z["vis"])}
             txt, scale = z["txt"], float(z["scale"])
 
@@ -240,8 +243,7 @@ def embed(paths: list) -> tuple[dict, np.ndarray, float]:
         model = CLIPModel.from_pretrained(CFG["clip_model"]).eval()
         processor = CLIPProcessor.from_pretrained(CFG["clip_model"])
         with torch.no_grad():
-            prompts = image_analysis.ClipScorer.POSITIVE_PROMPTS + image_analysis.ClipScorer.NEGATIVE_PROMPTS
-            t = _image_features_tensor(model.get_text_features(**processor(text=prompts, return_tensors="pt", padding=True)))
+            t = _image_features_tensor(model.get_text_features(**processor(text=_prompts(), return_tensors="pt", padding=True)))
             txt = (t / t.norm(dim=-1, keepdim=True)).numpy()
             scale = float(model.logit_scale.exp())
 
@@ -267,30 +269,33 @@ def embed(paths: list) -> tuple[dict, np.ndarray, float]:
                     print(f"  {done}/{len(todo)}")
 
         keys = list(cache)
-        np.savez(cache_path, model=CFG["clip_model"], paths=np.array(keys),
+        np.savez(cache_path, model=CFG["clip_model"], vis_keys=np.array(VIS_KEYS), prompts=np.array(_prompts()),
+                 paths=np.array(keys),
                  emb=np.stack([cache[k][0] for k in keys]), vis=np.stack([cache[k][1] for k in keys]),
                  txt=txt, scale=scale)
     return cache, txt, scale
+
+
+def _prompts() -> list:
+    return image_analysis.ClipScorer.POSITIVE_PROMPTS + image_analysis.ClipScorer.NEGATIVE_PROMPTS
 
 
 def heuristic_scores(emb: np.ndarray, vis: np.ndarray, txt: np.ndarray, scale: float) -> np.ndarray:
     """Exactly what 04_image_analysis.score_image() returns as 'score', computed
     from the cached embeddings instead of a second CLIP pass."""
     logits = scale * emb @ txt.T
-    probs = np.exp(logits - logits.max(axis=1, keepdims=True))
-    probs /= probs.sum(axis=1, keepdims=True)
-    n_pos = len(image_analysis.ClipScorer.POSITIVE_PROMPTS)
-    pos, neg = probs[:, :n_pos].sum(1), probs[:, n_pos:].sum(1)
-    clip_score = 100 * pos / (pos + neg + 1e-9)
-    feature_score = np.array([image_analysis.score_visual_features(dict(zip(VIS_KEYS, row)))["feature_score"]
-                              for row in vis])
-    return 0.5 * clip_score + 0.5 * feature_score
+    return np.array([
+        image_analysis.combine_scores(image_analysis.score_visual_features(dict(zip(VIS_KEYS, row))),
+                                      image_analysis.clip_score_from_logits(lg))["score"]
+        for row, lg in zip(vis, logits)
+    ])
 
 
 def visual_matrix(vis: np.ndarray) -> np.ndarray:
     """Model-friendly version of the 04 visual features (logs for skewed ones)."""
     d = dict(zip(VIS_KEYS, vis.T))
-    return np.column_stack([d["brightness"], d["contrast"], d["saturation"], np.log1p(d["sharpness"]),
+    return np.column_stack([d["brightness"], d["shadows"], d["highlights"], d["dynamic_range"], d["saturation"],
+                            d["blur"], d["blur_global"], np.log1p(d["noise"]),
                             np.log(d["aspect_ratio"]), np.log(d["width"] * d["height"])])
 
 
@@ -424,7 +429,7 @@ def write_report(rows, posts, cols, notes, final_c, verdict_text):
         "- The random-split row is NOT a valid estimate: the same accounts appear in train and test. "
         "It's shown only to illustrate how much an ungrouped split would flatter the model.",
         "", "## Final model", "",
-        f"Logistic regression (C = {final_c}) on {CFG['clip_model']} image embeddings + 6 visual features, "
+        f"Logistic regression (C = {final_c}) on {CFG['clip_model']} image embeddings + 10 visual features, "
         f"refit on all labeled posts. Saved to `{os.path.relpath(CFG['model_path'], config.BASE_DIR)}`.",
         "", "It predicts P(this image would be in its creator's top third), i.e. relative performance "
         "for a given account - not absolute likes, and not validated for accounts unlike the ones in this dataset.",
@@ -438,7 +443,7 @@ def write_report(rows, posts, cols, notes, final_c, verdict_text):
 
 # ── Inference ──────────────────────────────────────────────────────────
 class ImageEngagementPredictor:
-    """Loads the saved model for use elsewhere (e.g. the dashboard):
+    """Loads the saved model for use elsewhere (e.g. the web app):
 
         m = _load_module_by_path("image_model", "10_image_model_training.py")
         predictor = m.ImageEngagementPredictor()
