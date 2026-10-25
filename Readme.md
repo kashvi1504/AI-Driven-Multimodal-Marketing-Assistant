@@ -18,6 +18,7 @@ raw data, one script per stage, one config file.
 | Precise image editing | **Implemented, real models** | `rembg` background removal, `easyocr` text detection |
 | Canvas editor | **Implemented** | `streamlit-drawable-canvas` (crop/draw/text-box/flatten) |
 | Pitt Ads dataset loading | **Implemented, loading only** | `07_pitt_ads_loader.py` - schema-agnostic loader, no engagement model built on it yet |
+| Instagram image engagement model | **Implemented, trained (needs your data)** | `10_image_model_training.py` - CLIP embeddings + logistic regression, account-grouped CV against honest baselines. Not wired into the dashboard yet |
 | Pitt Ads → Instagram engagement model | **Planned, not implemented** | See "Planned" section below - deliberately not built yet |
 | Instagram dataset authenticity audit | **Implemented, statistical checks** | `08_instagram_audit.py` - distribution, Benford, consistency and duplicate checks before any modelling |
 | Website SEO/GEO analysis | **Implemented, heuristic checklist** | `09_website_analysis.py` + "Website Analysis" dashboard page; Google PageSpeed Insights for performance |
@@ -35,6 +36,7 @@ config.py                    ← every path/setting lives here
 07_pitt_ads_loader.py        ← Pitt Ads dataset loading interface (planned integration, see below)
 08_instagram_audit.py        ← authenticity audit for the Instagram dataset (run before modelling)
 09_website_analysis.py       ← single-page SEO/GEO/performance audit (CLI + dashboard page)
+10_image_model_training.py   ← trains + validates an image engagement model on the Instagram dataset
 Requirements.txt
 data/
 ├── raw/                     ← put the downloaded CSVs here (see below)
@@ -369,6 +371,53 @@ measurement.
   raw HTML, so content that only appears after JavaScript runs isn't seen.
 - Sites that block bots (HTTP 403/429) can't be audited.
 - Broken-link checking samples at most 20 links.
+
+## Image engagement model (Instagram)
+
+`10_image_model_training.py` trains a real image engagement model on the
+Instagram influencer dataset - the only source with real engagement
+outcomes. Run the authenticity audit first:
+
+```bash
+python 08_instagram_audit.py
+python 10_image_model_training.py                    # image paths in the CSV
+python 10_image_model_training.py --download-images  # image URLs in the CSV
+```
+
+Put the CSV at `data/raw/instagram_influencer.csv` (or set
+`INSTAGRAM_RAW_FILE`) and the image files in `data/raw/instagram_images/`
+(or set `INSTAGRAM_IMAGE_DIR`). Columns are auto-detected; override with
+`--account-col`, `--image-col`, `--likes-col`, `--followers-col`.
+
+**What it predicts:** whether an image would land in its creator's top or
+bottom third of posts by engagement rate (likes + comments ÷ followers).
+Ranking *within* an account removes follower count, niche and posting
+habits, so what's left to learn from is the image. It does not predict
+absolute likes. Posts from the dataset's last 7 days are dropped (still
+collecting likes) and so are accounts with fewer than 6 usable posts.
+
+**Model:** frozen CLIP (`openai/clip-vit-base-patch32`, same as the
+heuristic) image embeddings + the visual features from
+`04_image_analysis.py` → standardised logistic regression. Embeddings are
+cached in `data/processed/clip_image_embeddings.npz`, so re-runs are fast.
+
+**Evaluation:** 5-fold `GroupKFold` by account - test accounts are never
+seen in training. Out-of-fold AUC and within-account Spearman are reported
+with 95% CIs from resampling accounts, next to these baselines:
+
+| Baseline | Why it's there |
+|---|---|
+| Current heuristic (`score_image`) | the model has to beat what the dashboard shows today |
+| Visual features only | shows how much CLIP adds |
+| Permuted labels | should be ~0.5 AUC - if not, something leaks |
+| Random (ungrouped) split | reference only: shows how much a leaky split would flatter the model |
+
+Results go to `results/image_engagement/report.md` (with a plain-language
+verdict), `metrics.json` and `oof_predictions.csv`; the model is saved to
+`models/image_engagement.joblib`. `ImageEngagementPredictor` in the same
+file loads it for inference. It's not wired into the dashboard yet. If
+the verdict says it doesn't beat the heuristic or chance, keep the
+dashboard on the heuristic.
 
 ## Planned: Pitt Ads + Instagram engagement integration
 

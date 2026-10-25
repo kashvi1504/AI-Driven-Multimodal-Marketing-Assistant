@@ -9,7 +9,7 @@ sentencepiece
 datasets
 accelerate
 streamlit
-scipy                    # 08_instagram_audit.py
+scipy                    # 08_instagram_audit.py, 10_image_model_training.py
 requests                 # 09_website_analysis.py
 beautifulsoup4           # 09_website_analysis.py
 
