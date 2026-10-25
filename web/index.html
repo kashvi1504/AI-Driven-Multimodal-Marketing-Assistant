@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Sentiment Studio</title>
+  <meta name="description" content="AI-assisted marketing copy and creative analysis.">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%234F46E5'/%3E%3Cpath d='M16 7l9 9-9 9-9-9z' fill='white'/%3E%3C/svg%3E">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+  <div class="app">
+    <aside class="sidebar" id="sidebar">
+      <div class="brand">
+        <span class="brand-mark" aria-hidden="true">
+          <svg viewBox="0 0 32 32"><rect width="32" height="32" rx="8"/><path d="M16 7l9 9-9 9-9-9z"/></svg>
+        </span>
+        <div>
+          <div class="brand-name">Sentiment Studio</div>
+          <div class="brand-sub">Marketing AI toolkit</div>
+        </div>
+      </div>
+
+      <nav class="nav" id="nav" aria-label="Main"></nav>
+
+      <div class="system" id="system">
+        <div class="system-title">System</div>
+        <div class="system-row"><span class="dot dot-loading" id="model-dot"></span><span id="model-status">Starting models…</span></div>
+        <details class="system-deps">
+          <summary>Optional features</summary>
+          <ul id="deps-list"></ul>
+        </details>
+      </div>
+    </aside>
+
+    <div class="sidebar-backdrop" id="backdrop"></div>
+
+    <main class="main">
+      <header class="topbar">
+        <button class="icon-btn menu-btn" id="menu-btn" aria-label="Open menu">
+          <svg viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+        </button>
+        <div>
+          <div class="crumb" id="crumb">Analyze</div>
+          <h1 id="page-title">Ad Copy</h1>
+        </div>
+      </header>
+      <section class="view" id="view" tabindex="-1"></section>
+    </main>
+  </div>
+
+  <div class="toasts" id="toasts" role="status" aria-live="polite"></div>
+  <script src="/static/app.js"></script>
+</body>
+</html>

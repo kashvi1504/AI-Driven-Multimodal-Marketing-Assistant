@@ -1,8 +1,9 @@
 # Sentiment Studio — Marketing AI toolkit
 
 A small pipeline that fine-tunes a real sentiment classifier on marketing
-text, plus a Streamlit dashboard that wraps it together with heuristic
-image-engagement scoring and a few image-editing tools. One folder for
+text, plus a local web app (FastAPI backend + a hand-built HTML/CSS/JS
+front end) that wraps it together with creative-quality scoring for ad
+images and a few image-editing tools. One folder for
 raw data, one script per stage, one config file.
 
 ## What's implemented vs. planned
@@ -12,15 +13,16 @@ raw data, one script per stage, one config file.
 | Text sentiment classification | **Implemented, trained model** | Fine-tuned DistilBERT/RoBERTa, evaluated on a held-out test split |
 | Text engagement scoring | **Implemented, heuristic** | Rule-based (CTA/urgency keywords, length, punctuation) - not a trained model |
 | Ad copy rewriting | **Implemented, hybrid + grounded** | Local flan-t5 generation when available, template fallback otherwise; every rewrite passes a grounding check so it can't invent offers, prices or deadlines |
-| Image engagement scoring | **Implemented, heuristic** | Pretrained CLIP zero-shot similarity + measurable visual features |
+| Image quality scoring | **Implemented, heuristic** | Measured focus/exposure/contrast/noise/resolution/framing with critical-defect caps, + CLIP zero-shot appeal (see "Image quality scoring") |
 | Image style presets / auto-fix | **Implemented, deterministic** | Real pixel operations (brightness/contrast/color/sharpness/crop) |
 | Generative image editing | **Implemented, real model** | Stable Diffusion img2img via `diffusers` |
 | Precise image editing | **Implemented, real models** | `rembg` background removal, `easyocr` text detection |
-| Canvas editor | **Implemented** | `streamlit-drawable-canvas` (crop/draw/text-box/flatten) |
+| Canvas editor | **Implemented** | In-browser HTML canvas (draw/line/box/circle/text box/crop, undo, PNG export) |
 | Pitt Ads dataset loading | **Implemented, loading only** | `07_pitt_ads_loader.py` - schema-agnostic loader, no engagement model built on it yet |
+| Instagram image engagement model | **Implemented, trained (needs your data)** | `10_image_model_training.py` - CLIP embeddings + logistic regression, account-grouped CV against honest baselines. Shown on the Image Analysis page once `models/image_engagement.joblib` exists |
 | Pitt Ads → Instagram engagement model | **Planned, not implemented** | See "Planned" section below - deliberately not built yet |
 | Instagram dataset authenticity audit | **Implemented, statistical checks** | `08_instagram_audit.py` - distribution, Benford, consistency and duplicate checks before any modelling |
-| Website SEO/GEO analysis | **Implemented, heuristic checklist** | `09_website_analysis.py` + "Website Analysis" dashboard page; Google PageSpeed Insights for performance |
+| Website SEO/GEO analysis | **Implemented, heuristic checklist** | `09_website_analysis.py` + "Website Audit" web page; Google PageSpeed Insights for performance |
 
 ## File structure
 
@@ -28,13 +30,16 @@ raw data, one script per stage, one config file.
 config.py                    ← every path/setting lives here
 01_data_preprocessing.py     ← loads, cleans, balances, splits sentiment data
 02_model_training.py         ← fine-tunes the sentiment model + SentimentPredictor class
-03_dashboard.py              ← Streamlit UI: sentiment, image analysis, editing tools
-04_image_analysis.py         ← image engagement heuristic + deterministic style presets
+03_web_app.py                ← web app: FastAPI backend, run it and open http://127.0.0.1:8000
+copy_analysis.py             ← ad-copy features, engagement heuristic, grounded rewriter (used by the web app)
+04_image_analysis.py         ← image quality checks (blur, exposure, ...) + deterministic style presets
 05_generative_editing.py     ← Stable Diffusion img2img editing
 06_image_editing.py          ← precise background swap (rembg) + text replace (easyocr)
 07_pitt_ads_loader.py        ← Pitt Ads dataset loading interface (planned integration, see below)
 08_instagram_audit.py        ← authenticity audit for the Instagram dataset (run before modelling)
-09_website_analysis.py       ← single-page SEO/GEO/performance audit (CLI + dashboard page)
+09_website_analysis.py       ← single-page SEO/GEO/performance audit (CLI + web page)
+10_image_model_training.py   ← trains + validates an image engagement model on the Instagram dataset
+web/                         ← the site: index.html, styles.css, app.js (no build step)
 Requirements.txt
 data/
 ├── raw/                     ← put the downloaded CSVs here (see below)
@@ -53,12 +58,11 @@ results/
 pip install -r Requirements.txt
 ```
 
-The last four lines of `Requirements.txt` (`rembg`, `easyocr`, `diffusers`,
-`streamlit-drawable-canvas`) are **optional**. Everything else runs
-without them - the dashboard detects what's missing and disables just
-that page/feature with a clear message and an install hint, instead of
-crashing. Check the sidebar's "System → Optional dependencies" panel to
-see what's currently available.
+The last three lines of `Requirements.txt` (`rembg`, `easyocr`,
+`diffusers`) are **optional**. Everything else runs without them - the
+web app detects what's missing and disables just that feature with a
+clear message and an install hint, instead of crashing. Check the
+sidebar's "System → Optional features" panel to see what's available.
 
 ## 2. Download the sentiment datasets (optional but recommended)
 
@@ -94,13 +98,18 @@ the real datasets above for a classifier that generalizes well.
 ```bash
 python 01_data_preprocessing.py     # cleans + balances + splits data
 python 02_model_training.py         # fine-tunes, evaluates, saves best model
-streamlit run 03_dashboard.py       # try it interactively
+python 03_web_app.py                # then open http://127.0.0.1:8000
 ```
 
-**You do not need to run 1-2 before trying the dashboard.** If
-`models/best_model` doesn't exist yet, `03_dashboard.py` automatically
+The web app runs entirely on your machine (`--port 8080` to change the
+port). The sentiment model and CLIP warm up in the background when it
+starts; heavier models (Stable Diffusion, OCR, the rewriter) load the
+first time you use them. API docs are at http://127.0.0.1:8000/api/docs.
+
+**You do not need to run 1-2 before trying the web app.** If
+`models/best_model` doesn't exist yet, `03_web_app.py` automatically
 falls back to the public `cardiffnlp/twitter-roberta-base-sentiment-latest`
-checkpoint (shown as a banner in the app), so you can explore the UI
+checkpoint (shown in the sidebar), so you can explore the UI
 immediately and swap in your own fine-tuned model later.
 
 ## Datasets used for sentiment
@@ -234,7 +243,7 @@ rewards exactly those words. Now:
 ## Text engagement scoring — also a heuristic
 
 The "Engagement" score shown alongside sentiment on the **Ad Copy** and
-**Bulk Analysis** pages (`predict_engagement()` in `03_dashboard.py`) is
+**Bulk Analysis** pages (`predict_engagement()` in `copy_analysis.py`) is
 a **rule-based heuristic**, not a trained/validated model: it starts
 from a baseline of 50 and adds or subtracts fixed amounts for CTA
 keywords, urgency keywords, copy length, punctuation, and the
@@ -244,14 +253,46 @@ labeled dataset of ad copy paired with actual engagement outcomes to
 train or validate against. Treat "before/after" uplift numbers from the
 rewrite suggestion the same way: directional, not a guaranteed result.
 
-## Image engagement scoring — known limitation (worth citing in your report)
+## Image quality scoring
 
-`04_image_analysis.py` and the **Image Analysis** dashboard page score
-images using CLIP semantic similarity + measurable visual features
-(brightness, contrast, saturation, sharpness, aspect ratio). This is a
-**heuristic**, not a trained/validated model — there was no dataset
-available pairing real marketing images with real engagement outcomes
-at a usable scale.
+`04_image_analysis.py` and the **Image Analysis** page rate whether a
+creative is *technically fit to run as an ad*. It is a **heuristic**, not
+a model trained on engagement outcomes (that's `10_image_model_training.py`).
+
+**What's measured** (at feed display size, long side ≤ 1080 px - what a
+viewer actually sees):
+
+| Check | Method | Weight | Caps the score? |
+|---|---|---|---|
+| Focus | No-reference re-blur metric (Crété-Roffet et al., 2007) on the sharpest ~10% of textured regions, so a sharp product on a deliberately soft background passes | 35% | Yes - at 30 ("low") |
+| Exposure | 1st/99th luminance percentiles: only images with no highlights (underexposed) or no shadows (washed out) fail, so dark luxury or white-background ads aren't penalised for their style | 20% | Yes - at 30 |
+| Resolution | Shortest side (fails below ~200 px, passes from 600 px) | 15% | Yes - at 30 |
+| Contrast | Tonal range (1st-99th percentile) | 15% | Yes - at 45 |
+| Noise | Immerkær fast noise estimate, ignoring clipped pure black/white areas | 10% | Yes - at 45 |
+| Framing | Distance to a standard ad ratio (1:1, 4:5, 3:4, 2:3, 9:16, 4:3, 16:9, 1.91:1) | 5% | No |
+
+Colour saturation is reported but **not scored** - muted, monochrome
+and black-and-white ads are a style choice, not a defect.
+
+The technical score (weighted mean) is blended 70/30 with a CLIP
+zero-shot "polished ad vs poor image" appeal score (prompts are worded
+to be neutral about photo vs graphic design). Then **critical defects
+cap the result**: a badly blurred, badly exposed or tiny image is always
+rated "low", however good everything else is. Earlier versions averaged
+sharpness with four other features, so even very blurry photos landed
+on a neutral "medium" score.
+
+Thresholds were calibrated on real photos and graphic ads at controlled
+blur (Gaussian σ 0-10), noise, exposure, contrast and resolution levels:
+every image blurred at σ ≥ 2 rates "low"; sharp originals, flat-design
+ads, dark-themed ads and white-background product shots rate "high".
+Known limit: grain is judged at feed size, so fine grain on a very large
+image (which downscaling smooths out) isn't penalised.
+
+### Why there's no engagement *prediction* from images by default
+
+There was no dataset available pairing real marketing images with real
+engagement outcomes at a usable scale.
 
 We investigated using the "Viral Social Media Trends & Engagement" Kaggle
 dataset (Post metadata + Views/Likes/Shares/Comments/Engagement_Level) as
@@ -271,8 +312,8 @@ data:
 
 Given this, we chose **not** to build a model or present engagement-count
 predictions (likes/comments/shares) from this data, since doing so would
-produce confident-looking but meaningless numbers. The dashboard shows a
-0-100 heuristic score and High/Medium/Low tier only, clearly labeled as
+produce confident-looking but meaningless numbers. The web app shows a
+0-100 heuristic score and Good/Fair/Needs work tier only, clearly labeled as
 non-validated, rather than fabricated counts. This is a deliberate,
 documented methodological choice, not an oversight.
 
@@ -284,7 +325,6 @@ documented methodological choice, not an oversight.
 | Generative Editing page | `diffusers`, `accelerate` | Page shows an install hint instead of the editor |
 | Precise Editing → background swap | `rembg` | That action shows a friendly error with an install hint |
 | Precise Editing → text detection | `easyocr` | That action shows a friendly error with an install hint |
-| Canvas Editor page | `streamlit-drawable-canvas` | Page shows an install hint instead of the canvas |
 
 ## Website SEO/GEO analysis
 
@@ -293,7 +333,7 @@ documented methodological choice, not an oversight.
 optimisation, i.e. how easy the page is for AI answer engines such as
 ChatGPT, Perplexity and Google AI Overviews to read, trust and cite) and
 **performance**. It also runs the project's sentiment model over the
-page copy. Use it from the **Website Analysis** dashboard page, or from
+page copy. Use it from the **Website Audit** page of the web app, or from
 the command line:
 
 ```bash
@@ -370,6 +410,54 @@ measurement.
 - Sites that block bots (HTTP 403/429) can't be audited.
 - Broken-link checking samples at most 20 links.
 
+## Image engagement model (Instagram)
+
+`10_image_model_training.py` trains a real image engagement model on the
+Instagram influencer dataset - the only source with real engagement
+outcomes. Run the authenticity audit first:
+
+```bash
+python 08_instagram_audit.py
+python 10_image_model_training.py                    # image paths in the CSV
+python 10_image_model_training.py --download-images  # image URLs in the CSV
+```
+
+Put the CSV at `data/raw/instagram_influencer.csv` (or set
+`INSTAGRAM_RAW_FILE`) and the image files in `data/raw/instagram_images/`
+(or set `INSTAGRAM_IMAGE_DIR`). Columns are auto-detected; override with
+`--account-col`, `--image-col`, `--likes-col`, `--followers-col`.
+
+**What it predicts:** whether an image would land in its creator's top or
+bottom third of posts by engagement rate (likes + comments ÷ followers).
+Ranking *within* an account removes follower count, niche and posting
+habits, so what's left to learn from is the image. It does not predict
+absolute likes. Posts from the dataset's last 7 days are dropped (still
+collecting likes) and so are accounts with fewer than 6 usable posts.
+
+**Model:** frozen CLIP (`openai/clip-vit-base-patch32`, same as the
+heuristic) image embeddings + the visual features from
+`04_image_analysis.py` → standardised logistic regression. Embeddings are
+cached in `data/processed/clip_image_embeddings.npz`, so re-runs are fast.
+
+**Evaluation:** 5-fold `GroupKFold` by account - test accounts are never
+seen in training. Out-of-fold AUC and within-account Spearman are reported
+with 95% CIs from resampling accounts, next to these baselines:
+
+| Baseline | Why it's there |
+|---|---|
+| Current heuristic (`score_image`) | the model has to beat what the web app shows today |
+| Visual features only | shows how much CLIP adds |
+| Permuted labels | should be ~0.5 AUC - if not, something leaks |
+| Random (ungrouped) split | reference only: shows how much a leaky split would flatter the model |
+
+Results go to `results/image_engagement/report.md` (with a plain-language
+verdict), `metrics.json` and `oof_predictions.csv`; the model is saved to
+`models/image_engagement.joblib`. `ImageEngagementPredictor` in the same
+file loads it for inference, and the Image Analysis page shows its
+prediction (with its validated AUC) next to the heuristic once the model
+file exists. If the verdict says it doesn't beat chance, delete
+`models/image_engagement.joblib` so the page shows the heuristic only.
+
 ## Planned: Pitt Ads + Instagram engagement integration
 
 We're extending the image-analysis component with two additional
@@ -412,27 +500,27 @@ The planned, honest path forward:
 3. Report validation metrics honestly (accuracy/R²/whatever is
    appropriate) on that trained model — only once it exists — instead
    of the current heuristic score.
-4. Keep this as an additive page in the dashboard once it exists,
+4. Keep this as an additive page in the web app once it exists,
    clearly distinguished from the current heuristic ("Predicted" vs
    "Heuristic" labeling, matching the convention already used
    throughout the UI).
 
 None of this is implemented in the current codebase - do not assume any
-Pitt Ads or Instagram data currently influences the dashboard's
+Pitt Ads or Instagram data currently influences the web app's
 engagement scores.
 
-## Dashboard pages
+## Web app pages
 
 **Analyze**
 - **Ad Copy** — sentiment + heuristic engagement + explanation + rewrite suggestion for one piece of copy.
-- **Image Analysis** — heuristic engagement score for an uploaded image, visual-feature breakdown, and deterministic style presets (auto-fix, warm tone, punchy, etc.) with before/after comparison.
-- **Bulk Analysis** — same sentiment/engagement pipeline over a CSV of copy.
-- **Website Analysis** — SEO / GEO checklist, Core Web Vitals and copy sentiment for one web page (see "Website SEO/GEO analysis").
+- **Image Analysis** — creative-quality score with per-check results (focus, exposure, contrast, noise, resolution, framing), measurements, what to fix, and deterministic style presets (auto-fix, warm tone, punchy, etc.) with re-scored before/after comparison.
+- **Bulk Analysis** — same sentiment/engagement pipeline over a CSV of copy, with progress, charts, tables and a CSV download.
+- **Website Audit** — SEO / GEO checklist, Core Web Vitals and copy sentiment for one web page (see "Website SEO/GEO analysis").
 
 **Create & Edit**
 - **Generative Editing** — Stable Diffusion img2img restyling from a text prompt.
 - **Precise Editing** — exact background color swap (`rembg`) and OCR-based text replacement (`easyocr`), for when you need an exact result rather than a generative approximation.
-- **Canvas Editor** — freehand draw, crop, and text-box tools on an uploaded image.
+- **Canvas Editor** — draw, line, box, circle, text box and crop tools with undo, all in the browser.
 
 The sidebar also shows which sentiment model is active and which
 optional dependencies are currently installed, so you always know what
@@ -444,5 +532,5 @@ you're looking at before trusting a number.
 python -m py_compile *.py             # syntax check
 python 01_data_preprocessing.py       # should always succeed - see step 2
 python 02_model_training.py           # needs data/processed/*.csv from step above
-streamlit run 03_dashboard.py --server.fileWatcherType none
+python 03_web_app.py                  # open http://127.0.0.1:8000
 ```

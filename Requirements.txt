@@ -8,14 +8,15 @@ transformers
 sentencepiece
 datasets
 accelerate
-streamlit
-scipy                    # 08_instagram_audit.py
+fastapi                  # 03_web_app.py
+uvicorn                  # 03_web_app.py
+python-multipart         # 03_web_app.py (file uploads)
+scipy                    # 04_image_analysis.py, 08_instagram_audit.py, 10_image_model_training.py
 requests                 # 09_website_analysis.py
 beautifulsoup4           # 09_website_analysis.py
 
-# Optional - the dashboard degrades gracefully with a clear message if
+# Optional - the web app degrades gracefully with a clear message if
 # any of these are missing (see README "Optional dependencies").
 rembg                    # background removal (Precise Editing page)
 easyocr                  # text detection (Precise Editing page)
 diffusers                # Stable Diffusion (Generative Editing page)
-streamlit-drawable-canvas # Canvas Editor page

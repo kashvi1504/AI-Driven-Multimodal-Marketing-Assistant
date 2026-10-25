@@ -115,6 +115,30 @@ INSTAGRAM_AUDIT = {
     },
 }
 
+# ── Image engagement model (10_image_model_training.py) ───────────────
+# Trained on the same Instagram CSV the audit checks. Column names are
+# detected with INSTAGRAM_AUDIT["columns"], except the account column:
+# the audit's "group" candidates include category/niche, but the CV
+# split must be by ACCOUNT, so it has its own list.
+IMAGE_ENGAGEMENT = {
+    "raw_file": INSTAGRAM_AUDIT["raw_file"],
+    # image paths in the CSV are resolved as-is, then relative to this folder
+    "image_dir": os.environ.get("INSTAGRAM_IMAGE_DIR", os.path.join(RAW_DIR, "instagram_images")),
+    "out_dir": os.path.join(RESULTS_DIR, "image_engagement"),
+    "model_path": os.path.join(BASE_DIR, "models", "image_engagement.joblib"),
+    "embedding_cache": os.path.join(PROCESSED_DIR, "clip_image_embeddings.npz"),
+    "clip_model": "openai/clip-vit-base-patch32",  # same model as 04_image_analysis.ClipScorer
+    "account_columns": ["username", "user", "account", "owner", "influencer", "handle",
+                        "profile", "user_id", "owner_id", "account_id", "owner_username"],
+    "n_splits": 5,                # GroupKFold folds (by account)
+    "min_posts_per_account": 6,   # fewer posts -> within-account ranking is noise
+    "min_accounts": 10,
+    "min_post_age_days": 7,       # newer posts are still collecting likes - dropped
+    "label_quantile": 1 / 3,      # top third = 1, bottom third = 0, middle third unlabeled
+    "batch_size": 32,
+    "bootstrap_reps": 1000,
+}
+
 # ── Website SEO/GEO analysis (09_website_analysis.py) ─────────────────
 WEBSITE_ANALYSIS = {
     "timeout": 12,                 # seconds per HTTP request
