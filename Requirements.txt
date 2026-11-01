@@ -17,6 +17,6 @@ beautifulsoup4           # 09_website_analysis.py
 
 # Optional - the web app degrades gracefully with a clear message if
 # any of these are missing (see README "Optional dependencies").
-rembg                    # background removal (Precise Editing page)
+rembg[cpu]               # background removal (Precise Editing page); [cpu] pulls in onnxruntime
 easyocr                  # text detection (Precise Editing page)
 diffusers                # Stable Diffusion (Generative Editing page)
