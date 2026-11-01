@@ -166,7 +166,7 @@ input[type=range] { width: 100%; accent-color: var(--accent); }
 
 /* Dropzone */
 .dropzone {
-  border: 1.5px dashed var(--border-strong); border-radius: var(--radius); background: var(--surface);
+  display: block; border: 1.5px dashed var(--border-strong); border-radius: var(--radius); background: var(--surface);
   padding: 34px 20px; text-align: center; cursor: pointer; transition: border-color .15s, background .15s;
 }
 .dropzone:hover, .dropzone.drag { border-color: var(--accent); background: var(--accent-soft); }
