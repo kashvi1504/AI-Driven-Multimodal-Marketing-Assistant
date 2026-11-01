@@ -32,6 +32,7 @@ config.py                    ← every path/setting lives here
 02_model_training.py         ← fine-tunes the sentiment model + SentimentPredictor class
 03_web_app.py                ← web app: FastAPI backend, run it and open http://127.0.0.1:8000
 copy_analysis.py             ← ad-copy features, engagement heuristic, grounded rewriter (used by the web app)
+auth.py                      ← local accounts for the web app: sign up / log in, sessions, dashboard history
 04_image_analysis.py         ← image quality checks (blur, exposure, ...) + deterministic style presets
 05_generative_editing.py     ← Stable Diffusion img2img editing
 06_image_editing.py          ← precise background swap (rembg) + text replace (easyocr)
@@ -39,11 +40,15 @@ copy_analysis.py             ← ad-copy features, engagement heuristic, grounde
 08_instagram_audit.py        ← authenticity audit for the Instagram dataset (run before modelling)
 09_website_analysis.py       ← single-page SEO/GEO/performance audit (CLI + web page)
 10_image_model_training.py   ← trains + validates an image engagement model on the Instagram dataset
-web/                         ← the site: index.html, styles.css, app.js (no build step)
+web/                         ← the site, no build step:
+                                 landing.html (home page), login.html (log in / sign up),
+                                 index.html + app.js + styles.css (the workspace),
+                                 theme.css + theme.js (shared light/dark design tokens), site.css
 Requirements.txt
 data/
 ├── raw/                     ← put the downloaded CSVs here (see below)
-└── processed/                ← train/val/test CSVs, auto-generated
+├── processed/                ← train/val/test CSVs, auto-generated
+└── accounts/                 ← web app accounts + history, auto-generated (git-ignored)
 models/
 └── best_model/                ← saved after training
 results/
@@ -102,7 +107,15 @@ python 03_web_app.py                # then open http://127.0.0.1:8000
 ```
 
 The web app runs entirely on your machine (`--port 8080` to change the
-port). The sentiment model and CLIP warm up in the background when it
+port). Open http://127.0.0.1:8000 for the home page, then **Get started**
+to create an account. The workspace lives at `/app`. For reliable Website
+Audit speed scores, start it with a free PageSpeed key (see "Performance"):
+
+```bash
+PAGESPEED_API_KEY=your-key python 03_web_app.py
+```
+
+ The sentiment model and CLIP warm up in the background when it
 starts; heavier models (Stable Diffusion, OCR, the rewriter) load the
 first time you use them. API docs are at http://127.0.0.1:8000/api/docs.
 
@@ -511,6 +524,13 @@ engagement scores.
 
 ## Web app pages
 
+**Public site**
+- **Home** (`/`) — what Sentiment Studio does, the seven tools, how it works, why it's trustworthy, and a FAQ.
+- **Log in / Sign up** (`/login`, `/signup`) — local accounts (see below).
+
+**Overview**
+- **Dashboard** — greeting, totals and average scores, analyses per day for the last 14 days, a breakdown by tool, shortcuts to every tool, and your recent activity.
+
 **Analyze**
 - **Ad Copy** — sentiment + heuristic engagement + explanation + rewrite suggestion for one piece of copy.
 - **Image Analysis** — creative-quality score with per-check results (focus, exposure, contrast, noise, resolution, framing), measurements, what to fix, and deterministic style presets (auto-fix, warm tone, punchy, etc.) with re-scored before/after comparison.
@@ -524,7 +544,19 @@ engagement scores.
 
 The sidebar also shows which sentiment model is active and which
 optional dependencies are currently installed, so you always know what
-you're looking at before trusting a number.
+you're looking at before trusting a number. Every page has a light and
+dark theme. It follows your OS setting until you pick one with the
+sun/moon button, and that choice is remembered.
+
+### Accounts
+
+`auth.py` keeps accounts on this machine only, in `data/accounts/`
+(git-ignored). Passwords are stored as salted PBKDF2-SHA256 hashes, and
+sessions are HMAC-signed cookies that last 14 days, so restarting the
+server doesn't log you out. Every `/api/` route except sign-up, log-in
+and status needs a session. The dashboard history is the last 60
+analyses per user. This protects a single-machine install; put it
+behind HTTPS and a proper user store before exposing it to the internet.
 
 ## Running tests/checks
 

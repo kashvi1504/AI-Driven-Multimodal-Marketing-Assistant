@@ -34,6 +34,8 @@ const ICON_PATHS = {
   undo: '<path d="M9 14L4 9l5-5"/><path d="M4 9h11a5 5 0 0 1 0 10h-3"/>',
   trash: '<path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/>',
   refresh: '<path d="M20 11a8 8 0 1 0-2.3 5.7M20 4v7h-7"/>',
+  dashboard: '<rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/>',
+  plus: '<path d="M12 5v14M5 12h14"/>',
 };
 const icon = (name) => `<svg viewBox="0 0 24 24" aria-hidden="true">${ICON_PATHS[name] || ""}</svg>`;
 
@@ -58,6 +60,11 @@ async function api(path, { json, form, method } = {}) {
   }
   let data = null;
   try { data = await res.json(); } catch { /* non-JSON error page */ }
+  if (res.status === 401 && !path.startsWith("/api/auth/")) {
+    // session ended - log in again and come straight back to this page
+    location.href = `/login?next=/app${encodeURIComponent(location.hash)}`;
+    throw new ApiError("Please log in to continue.", "");
+  }
   if (!res.ok) {
     if (data && data.error) throw new ApiError(data.error, data.hint || data.detail);
     if (data && data.detail) throw new ApiError("The request was rejected.", JSON.stringify(data.detail));
@@ -202,7 +209,7 @@ async function refreshStatus() {
 // ══════════════════════════════════════════════════════════════════════
 // Pages
 // ══════════════════════════════════════════════════════════════════════
-const S = { copy: {}, image: {}, bulk: {}, website: {}, generate: {}, precise: {}, canvas: {} };
+const S = { dashboard: {}, copy: {}, image: {}, bulk: {}, website: {}, generate: {}, precise: {}, canvas: {} };
 
 // ── Ad Copy ──────────────────────────────────────────────────────────
 function pageCopy(view) {
@@ -983,10 +990,159 @@ function drawShape(ctx, s) {
   ctx.restore();
 }
 
+// ── Dashboard ────────────────────────────────────────────────────────
+const KINDS = {
+  copy: { label: "Ad copy", page: "copy" },
+  image: { label: "Image", page: "image" },
+  bulk: { label: "Bulk CSV", page: "bulk" },
+  website: { label: "Website", page: "website" },
+  generate: { label: "Generative edit", page: "generate" },
+  precise: { label: "Precise edit", page: "precise" },
+};
+const TOOL_BLURBS = {
+  copy: "Tone, engagement score and a grounded rewrite",
+  image: "Six quality checks at feed size",
+  bulk: "Score a whole campaign CSV at once",
+  website: "SEO, GEO and Core Web Vitals",
+  generate: "Restyle a creative with Stable Diffusion",
+  precise: "Swap backgrounds or replace text",
+  canvas: "Annotate, crop and add text",
+};
+
+function timeAgo(sec) {
+  const d = Date.now() / 1000 - sec;
+  if (d < 60) return "just now";
+  if (d < 3600) return `${Math.floor(d / 60)} min ago`;
+  if (d < 86400) return `${Math.floor(d / 3600)} h ago`;
+  if (d < 7 * 86400) return `${Math.floor(d / 86400)} d ago`;
+  return new Date(sec * 1000).toLocaleDateString(undefined, { day: "numeric", month: "short" });
+}
+
+const greeting = () => { const h = new Date().getHours(); return h < 12 ? "Good morning" : h < 18 ? "Good afternoon" : "Good evening"; };
+const avg = (xs) => (xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : null);
+const pageMeta = (id) => PAGES.find((p) => p.id === id);
+
+async function pageDashboard(view) {
+  const first = (USER.data?.name || "").split(/\s+/)[0];
+  view.innerHTML = `
+    <div class="welcome fade-in">
+      <div><h2>${greeting()}${first ? `, ${esc(first)}` : ""} 👋</h2>
+        <p>Check a new ad before it goes live, or pick up where you left off.</p></div>
+      <a class="btn btn-white btn-lg" href="#/copy">${icon("plus")}New analysis</a>
+    </div>
+    <div class="grid grid-4 mt" id="dash-stats">${'<div class="skeleton" style="height:112px"></div>'.repeat(4)}</div>
+    <div class="split dash-split mt">
+      <div class="card"><div class="card-title">Your activity</div><p class="card-sub">Analyses per day, last 14 days</p><div id="dash-chart"><div class="skeleton" style="height:190px"></div></div></div>
+      <div class="card"><div class="card-title">By tool</div><p class="card-sub">Everything you've run so far</p><div id="dash-tools"><div class="skeleton" style="height:190px"></div></div></div>
+    </div>
+    <div class="section"><p class="eyebrow">Start something new</p>
+      <div class="quick">${PAGES.filter((p) => p.id !== "dashboard").map((p) => `
+        <a href="#/${p.id}"><span class="q-ico qc-${p.id}">${icon(p.icon)}</span><div><b>${esc(p.title)}</b><span>${esc(TOOL_BLURBS[p.id] || "")}</span></div></a>`).join("")}
+      </div></div>
+    <div class="card mt"><div class="row"><div class="card-title">Recent activity</div><span class="spacer"></span>
+      <button class="btn btn-ghost" id="dash-refresh">${icon("refresh")}Refresh</button></div>
+      <div id="dash-recent" class="mt"><div class="skeleton" style="height:140px"></div></div></div>`;
+  $("#dash-refresh").addEventListener("click", () => ROUTER.go());
+
+  let items;
+  try { items = (await api("/api/activity")).items; }
+  catch (e) { if (ROUTER.current === "dashboard") $("#dash-recent").innerHTML = errorNote(e); return; }
+  if (ROUTER.current !== "dashboard") return;
+
+  const now = Date.now() / 1000, week = items.filter((i) => now - i.at < 7 * 86400);
+  const scoreOf = (kind) => avg(items.filter((i) => i.kind === kind && i.score != null).map((i) => i.score));
+  const imgAvg = scoreOf("image"), copyAvg = scoreOf("copy");
+  const tile = (label, value, sub) => `<div class="card stat-tile fade-in"><div class="kpi-label">${label}</div>
+    <div class="kpi-value">${value}</div><div class="kpi-sub">${sub}</div></div>`;
+  const scoreTile = (label, v, kind) => tile(label, v == null ? "-" : Math.round(v),
+    v == null ? `Run your first ${KINDS[kind].label.toLowerCase()} check` : `${badge(TIER_TEXT[tierOf(v)], tierOf(v))} average`);
+  $("#dash-stats").innerHTML = [
+    tile("Analyses run", items.length, items.length ? `Last one ${timeAgo(items[0].at)}` : "Nothing yet - start below"),
+    tile("This week", week.length, "in the last 7 days"),
+    scoreTile("Avg. image score", imgAvg, "image"),
+    scoreTile("Avg. copy score", copyAvg, "copy"),
+  ].join("");
+
+  // per-day bar chart (single series, so no legend - the title names it)
+  const days = [...Array(14)].map((_, k) => { const d = new Date(); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() - 13 + k); return d; });
+  const counts = days.map((d) => items.filter((i) => { const t = i.at * 1000; return t >= d && t < +d + 86400000; }).length);
+  const max = Math.max(4, ...counts);
+  $("#dash-chart").innerHTML = `<div class="chart">
+      <div class="chart-bars"><div class="chart-grid"><i></i><i></i><i></i><i></i></div>
+        ${counts.map((c, k) => `<div class="chart-col" data-k="${k}"><i class="${c ? "" : "zero"}" style="height:0" data-h="${c ? (100 * c) / max : 1.5}%"></i></div>`).join("")}</div>
+      <div class="chart-axis">${days.map((d) => `<span>${d.toLocaleDateString(undefined, { day: "numeric", month: "short" })}</span>`).join("")}</div>
+    </div>`;
+  const chart = $("#dash-chart .chart");
+  requestAnimationFrame(() => requestAnimationFrame(() => $$(".chart-col i", chart).forEach((el) => { el.style.height = el.dataset.h; })));
+  let tip = null;
+  $$(".chart-col", chart).forEach((col) => {
+    col.addEventListener("mouseenter", () => {
+      const k = +col.dataset.k, r = col.getBoundingClientRect(), cr = chart.getBoundingClientRect();
+      tip = document.createElement("div");
+      tip.className = "chart-tip";
+      tip.innerHTML = `${days[k].toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short" })} · <b>${counts[k]}</b> ${counts[k] === 1 ? "analysis" : "analyses"}`;
+      tip.style.left = `${r.left - cr.left + r.width / 2}px`;
+      tip.style.top = `${r.bottom - cr.top - (col.firstElementChild.offsetHeight || 2)}px`;
+      chart.append(tip);
+    });
+    col.addEventListener("mouseleave", () => { tip?.remove(); tip = null; });
+  });
+
+  const byKind = Object.keys(KINDS).map((k) => [k, items.filter((i) => i.kind === k).length]);
+  const maxKind = Math.max(1, ...byKind.map(([, n]) => n));
+  $("#dash-tools").innerHTML = items.length
+    ? `<div class="hbars">${byKind.map(([k, n]) => `<div class="hbar"><span>${esc(KINDS[k].label)}</span>${bar((100 * n) / maxKind, "accent")}<b>${n}</b></div>`).join("")}</div>`
+    : `<div class="empty">${icon("dashboard")}Your tools breakdown will appear here.</div>`;
+
+  $("#dash-recent").innerHTML = items.length
+    ? `<div class="activity">${items.slice(0, 8).map((i) => {
+        const k = KINDS[i.kind] || { label: i.kind, page: "dashboard" }, meta = pageMeta(k.page) || PAGES[0];
+        const t = i.score != null ? tierOf(i.score) : null;
+        return `<a class="act" href="#/${k.page}"><span class="q-ico qc-${k.page}">${icon(meta.icon)}</span>
+          <div style="min-width:0"><div class="act-title">${esc(i.title || k.label)}</div>
+            <div class="act-sub">${esc(k.label)}${i.detail ? ` · ${esc(i.detail)}` : ""}${i.label && i.kind === "copy" ? ` · ${esc(i.label)}` : ""} · ${timeAgo(i.at)}</div></div>
+          <div class="act-right">${t ? badge(`${Math.round(i.score)} · ${TIER_TEXT[t]}`, t) : ""}</div></a>`;
+      }).join("")}</div>`
+    : `<div class="empty">${icon("sparkles")}<div>No analyses yet.</div><div class="small">Your recent copy, image and website checks will show up here.</div>
+        <a class="btn btn-primary mt" href="#/copy">${icon("arrow")}Analyze your first ad</a></div>`;
+  animate($("#dash-tools"));
+}
+
+// ── Signed-in user (top-right menu) ─────────────────────────────────
+const USER = { data: null };
+async function loadUser() {
+  try {
+    USER.data = (await api("/api/auth/me")).user;
+  } catch {
+    location.href = `/login?next=/app${encodeURIComponent(location.hash)}`;
+    return;
+  }
+  const { name, email } = USER.data;
+  const initials = name.split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0].toUpperCase()).join("") || "?";
+  $("#avatar").textContent = initials;
+  $("#user-name").textContent = name;
+  $("#menu-name").textContent = name;
+  $("#menu-email").textContent = email;
+}
+
+function setupUserMenu() {
+  const btn = $("#user-btn"), menu = $("#menu");
+  const close = () => { menu.hidden = true; btn.setAttribute("aria-expanded", "false"); };
+  btn.addEventListener("click", (e) => { e.stopPropagation(); menu.hidden = !menu.hidden; btn.setAttribute("aria-expanded", String(!menu.hidden)); });
+  document.addEventListener("click", (e) => { if (!e.target.closest("#user-menu")) close(); });
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape") close(); });
+  $$("a", menu).forEach((a) => a.addEventListener("click", close));
+  $("#logout").addEventListener("click", async () => {
+    try { await api("/api/auth/logout", { method: "POST" }); } catch { /* cookie is cleared server-side either way */ }
+    location.href = "/";
+  });
+}
+
 // ══════════════════════════════════════════════════════════════════════
 // Router + shell
 // ══════════════════════════════════════════════════════════════════════
 const PAGES = [
+  { id: "dashboard", group: "Overview", title: "Dashboard", icon: "dashboard", render: pageDashboard },
   { id: "copy", group: "Analyze", title: "Ad Copy", icon: "copy", render: pageCopy },
   { id: "image", group: "Analyze", title: "Image Analysis", icon: "image", render: pageImage },
   { id: "bulk", group: "Analyze", title: "Bulk Analysis", icon: "table", render: pageBulk },
@@ -999,7 +1155,7 @@ const PAGES = [
 const ROUTER = {
   current: null,
   go() {
-    const id = location.hash.replace(/^#\/?/, "") || "copy";
+    const id = location.hash.replace(/^#\/?/, "") || "dashboard";
     const page = PAGES.find((p) => p.id === id) || PAGES[0];
     this.current = page.id;
     $$("#nav a").forEach((a) => a.classList.toggle("active", a.dataset.id === page.id));
@@ -1024,10 +1180,12 @@ function buildNav() {
 function closeMenu() { $("#sidebar").classList.remove("open"); $("#backdrop").classList.remove("open"); }
 
 buildNav();
+setupUserMenu();
 $("#menu-btn").addEventListener("click", () => { $("#sidebar").classList.add("open"); $("#backdrop").classList.add("open"); });
 $("#backdrop").addEventListener("click", closeMenu);
 window.addEventListener("scroll", () => $(".topbar").classList.toggle("scrolled", window.scrollY > 4), { passive: true });
 window.addEventListener("hashchange", () => ROUTER.go());
+loadUser().then(() => { if (ROUTER.current === "dashboard") ROUTER.go(); });
 refreshStatus().then(() => {
   // pages that gate on optional dependencies need the status; re-render once it's in
   if (["generate", "precise", "image"].includes(ROUTER.current) && !$(".loading")) ROUTER.go();

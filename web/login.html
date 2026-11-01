@@ -1,0 +1,164 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Log in · Sentiment Studio</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%236A4CFF'/%3E%3Cstop offset='1' stop-color='%23FF5E9C'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='32' height='32' rx='9' fill='url(%23g)'/%3E%3Cpath d='M16 7l9 9-9 9-9-9z' fill='white'/%3E%3C/svg%3E">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet">
+  <script src="/static/theme.js"></script>
+  <link rel="stylesheet" href="/static/theme.css">
+  <link rel="stylesheet" href="/static/site.css">
+</head>
+<body>
+  <div class="auth">
+    <div class="auth-form-side">
+      <div class="auth-top">
+        <a class="logo" href="/"><span class="logo-mark"><svg viewBox="0 0 16 16"><path d="M8 1l7 7-7 7-7-7z"/></svg></span>Sentiment Studio</a>
+        <button class="theme-toggle" data-theme-toggle aria-label="Switch light or dark mode">
+          <svg class="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
+          <svg class="i-moon" viewBox="0 0 24 24"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>
+        </button>
+      </div>
+
+      <div class="auth-form-wrap">
+        <form class="auth-form" id="form" novalidate>
+          <h1 id="title">Welcome back</h1>
+          <p id="subtitle">Log in to pick up where you left off.</p>
+
+          <div class="seg" role="tablist">
+            <button type="button" role="tab" data-mode="login">Log in</button>
+            <button type="button" role="tab" data-mode="signup">Sign up</button>
+          </div>
+
+          <div id="error"></div>
+
+          <div class="form-row" id="name-row">
+            <label class="field" for="name">Full name</label>
+            <input class="input" id="name" name="name" autocomplete="name" placeholder="Jane Doe">
+          </div>
+          <div class="form-row">
+            <label class="field" for="email">Email</label>
+            <input class="input" id="email" name="email" type="email" autocomplete="email" placeholder="you@company.com" required>
+          </div>
+          <div class="form-row">
+            <label class="field" for="password">Password</label>
+            <div class="pw-wrap">
+              <input class="input" id="password" name="password" type="password" autocomplete="current-password" placeholder="••••••••" required>
+              <button type="button" class="pw-toggle" id="pw-toggle" aria-label="Show password">Show</button>
+            </div>
+            <div class="hint" id="pw-hint">At least 8 characters.</div>
+          </div>
+
+          <button class="btn btn-primary btn-lg btn-block" id="submit" type="submit">Log in</button>
+
+          <div class="auth-switch" id="switch"></div>
+          <div class="auth-fine">
+            <svg viewBox="0 0 24 24"><rect x="4" y="10" width="16" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>
+            Your account is stored only on this computer.
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <aside class="auth-art">
+      <div>
+        <h2>Spot weak ads before your budget does.</h2>
+        <ul>
+          <li><svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>Score copy, creatives and landing pages in seconds</li>
+          <li><svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>See exactly why, with every check explained</li>
+          <li><svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>Fix it with rewrites that never invent offers</li>
+        </ul>
+      </div>
+      <div class="glass">
+        <div class="glass-row">
+          <div class="mini-ring"><svg viewBox="0 0 84 84"><circle class="t" cx="42" cy="42" r="35"/><circle class="v" cx="42" cy="42" r="35"/></svg><b>78</b></div>
+          <div>
+            <b style="font-size:1.05rem">Summer sale creative</b><br>
+            <small>Focus ✓ · Exposure ✓ · Resolution ✓ · Contrast needs work</small>
+          </div>
+        </div>
+      </div>
+    </aside>
+  </div>
+
+  <script>
+    "use strict";
+    const $ = (s) => document.querySelector(s);
+    const esc = (v) => String(v ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+    const params = new URLSearchParams(location.search);
+    // only follow same-site paths after logging in
+    const nextRaw = params.get("next") || "/app";
+    const next = (/^\/(?!\/)/.test(nextRaw) ? nextRaw : "/app") + location.hash;
+
+    const COPY = {
+      login: { title: "Welcome back", sub: "Log in to pick up where you left off.", btn: "Log in",
+               sw: 'New here? <a href="#" data-go="signup">Create an account</a>', pw: "current-password" },
+      signup: { title: "Create your account", sub: "Start analyzing your campaigns in under a minute.", btn: "Create account",
+                sw: 'Already have an account? <a href="#" data-go="login">Log in</a>', pw: "new-password" },
+    };
+    let mode = location.pathname === "/signup" || params.get("mode") === "signup" ? "signup" : "login";
+
+    function setMode(m) {
+      mode = m;
+      const c = COPY[m];
+      $("#title").textContent = c.title; $("#subtitle").textContent = c.sub; $("#submit").textContent = c.btn;
+      $("#switch").innerHTML = c.sw;
+      $("#name-row").style.display = m === "signup" ? "" : "none";
+      $("#pw-hint").style.display = m === "signup" ? "" : "none";
+      $("#password").autocomplete = c.pw;
+      document.querySelectorAll(".seg button").forEach((b) => {
+        b.classList.toggle("active", b.dataset.mode === m); b.setAttribute("aria-selected", b.dataset.mode === m);
+      });
+      document.title = `${m === "signup" ? "Sign up" : "Log in"} · Sentiment Studio`;
+      history.replaceState(null, "", (m === "signup" ? "/signup" : "/login") + location.search + location.hash);
+      $("#error").innerHTML = "";
+      (m === "signup" ? $("#name") : $("#email")).focus();
+    }
+
+    function showError(title, hint) {
+      $("#error").innerHTML = `<div class="note note-error auth-error"><div><b>${esc(title)}</b>${hint ? `<div>${esc(hint)}</div>` : ""}</div></div>`;
+    }
+
+    document.addEventListener("click", (e) => {
+      const seg = e.target.closest(".seg button"), go = e.target.closest("[data-go]");
+      if (seg) setMode(seg.dataset.mode);
+      if (go) { e.preventDefault(); setMode(go.dataset.go); }
+    });
+    $("#pw-toggle").addEventListener("click", () => {
+      const pw = $("#password"), show = pw.type === "password";
+      pw.type = show ? "text" : "password";
+      $("#pw-toggle").textContent = show ? "Hide" : "Show";
+      $("#pw-toggle").setAttribute("aria-label", show ? "Hide password" : "Show password");
+    });
+
+    $("#form").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const body = { email: $("#email").value.trim(), password: $("#password").value };
+      if (mode === "signup") body.name = $("#name").value.trim();
+      if (mode === "signup" && !body.name) return showError("Enter your name.");
+      if (!body.email) return showError("Enter your email address.");
+      if (!body.password) return showError("Enter your password.");
+      const btn = $("#submit");
+      btn.classList.add("loading"); btn.disabled = true;
+      try {
+        const res = await fetch(`/api/auth/${mode}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          showError(data.error || "Something went wrong.", data.hint || (Array.isArray(data.detail) ? "Check every field is filled in." : ""));
+        } else {
+          location.href = next;
+          return;
+        }
+      } catch {
+        showError("Can't reach the server.", "Is the web app still running?");
+      }
+      btn.classList.remove("loading"); btn.disabled = false;
+    });
+
+    setMode(mode);
+  </script>
+</body>
+</html>

@@ -12,9 +12,13 @@ Heavy models (sentiment, CLIP, Stable Diffusion, OCR) load lazily on first
 use and stay in memory; the sentiment model and CLIP warm up in the
 background at startup so the first request is fast.
 
-Pages (see README.md for the full breakdown):
-  Analyze       -> Ad Copy, Image Analysis, Bulk Analysis, Website Audit
-  Create & Edit -> Generative Editing, Precise Editing, Canvas Editor
+Site:
+  /             -> landing page (what the product is and why to use it)
+  /login        -> log in / sign up (local accounts, see auth.py)
+  /app          -> the workspace (needs a login):
+    Overview      -> Dashboard
+    Analyze       -> Ad Copy, Image Analysis, Bulk Analysis, Website Audit
+    Create & Edit -> Generative Editing, Precise Editing, Canvas Editor
 """
 
 import argparse
@@ -29,12 +33,13 @@ from contextlib import asynccontextmanager
 from functools import lru_cache
 
 import pandas as pd
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from PIL import Image, UnidentifiedImageError
 from pydantic import BaseModel
 
+import auth
 import copy_analysis as ca
 from config import BASE_DIR, IMAGE_ENGAGEMENT, MODEL_DIR
 
@@ -201,8 +206,24 @@ async def no_cache_site_files(request, call_next):
     return response
 
 
+# API routes anyone can call; everything else under /api/ needs a login
+PUBLIC_API = ("/api/auth/", "/api/status")
+
+
+@app.middleware("http")
+async def require_login(request: Request, call_next):
+    request.state.user_id = auth.read_session(request.cookies.get(auth.COOKIE_NAME))
+    path = request.url.path
+    if path.startswith("/api/") and not path.startswith(PUBLIC_API) and path != "/api/docs":
+        if not request.state.user_id or auth.get_user(request.state.user_id) is None:
+            return JSONResponse(status_code=401, content={"error": "Please log in to continue.",
+                                                          "hint": "Your session has ended."})
+    return await call_next(request)
+
+
 @app.exception_handler(FriendlyError)
-async def friendly_error_handler(_, exc: FriendlyError):
+@app.exception_handler(auth.AuthError)
+async def friendly_error_handler(_, exc):
     return JSONResponse(status_code=exc.status, content={"error": exc.title, "hint": exc.hint})
 
 
@@ -232,6 +253,62 @@ def status():
     }
 
 
+# ── Accounts ─────────────────────────────────────────────────────────────
+class SignupRequest(BaseModel):
+    name: str
+    email: str
+    password: str
+
+
+class LoginRequest(BaseModel):
+    email: str
+    password: str
+
+
+def _logged_in(user: dict) -> JSONResponse:
+    response = JSONResponse({"user": user})
+    response.set_cookie(auth.COOKIE_NAME, auth.make_session(user["id"]), max_age=auth.SESSION_SECONDS,
+                        httponly=True, samesite="lax", path="/")
+    return response
+
+
+@app.post("/api/auth/signup")
+def signup(req: SignupRequest):
+    return _logged_in(auth.create_user(req.name, req.email, req.password))
+
+
+@app.post("/api/auth/login")
+def login(req: LoginRequest):
+    return _logged_in(auth.authenticate(req.email, req.password))
+
+
+@app.post("/api/auth/logout")
+def logout():
+    response = JSONResponse({"ok": True})
+    response.delete_cookie(auth.COOKIE_NAME, path="/")
+    return response
+
+
+@app.get("/api/auth/me")
+def me(request: Request):
+    user = auth.get_user(request.state.user_id) if request.state.user_id else None
+    if user is None:
+        raise FriendlyError("Not logged in.", status=401)
+    return {"user": user}
+
+
+@app.get("/api/activity")
+def activity(request: Request):
+    return {"items": auth.list_activity(request.state.user_id)}
+
+
+def _record(request: Request, kind: str, title: str, score=None, label=None, detail=""):
+    try:
+        auth.record_activity(request.state.user_id, kind, title, score, label, detail)
+    except OSError:  # history is a nice-to-have - never fail the analysis over it
+        pass
+
+
 # ── Ad copy ──────────────────────────────────────────────────────────────
 class CopyRequest(BaseModel):
     text: str
@@ -239,7 +316,7 @@ class CopyRequest(BaseModel):
 
 
 @app.post("/api/copy/analyze")
-def analyze_copy(req: CopyRequest):
+def analyze_copy(req: CopyRequest, request: Request):
     text = req.text.strip()
     if not text:
         raise FriendlyError("Enter some ad copy to analyze.")
@@ -247,6 +324,7 @@ def analyze_copy(req: CopyRequest):
     features = ca.analyze_text_features(text)
     eng = ca.predict_engagement(features, result)
     refinement = ca.refine_low_engagement_copy(text, result["label"], eng["engagement_score"], req.offer_details)
+    _record(request, "copy", text, eng["engagement_score"], result["label"])
     return {
         "sentiment": result,
         "explanation": ca.explain_sentiment(result, features),
@@ -260,9 +338,12 @@ def analyze_copy(req: CopyRequest):
 
 # ── Image analysis ───────────────────────────────────────────────────────
 @app.post("/api/image/analyze")
-async def analyze_image(image: UploadFile = File(...)):
+async def analyze_image(request: Request, image: UploadFile = File(...)):
     img = await read_image(image)
-    return image_report(img)
+    report = image_report(img)
+    _record(request, "image", image.filename or "Image", report["score"], report["label"],
+            f"{img.width}×{img.height}")
+    return report
 
 
 @app.post("/api/image/style")
@@ -280,7 +361,8 @@ async def style_image(image: UploadFile = File(...), preset: str = Form(...)):
 _jobs: dict = {}
 
 
-def _run_bulk(job_id: str, df: pd.DataFrame, text_col: str, rewrite: bool):
+def _run_bulk(job_id: str, df: pd.DataFrame, text_col: str, rewrite: bool, user_id: str | None = None,
+              filename: str = "CSV"):
     job = _jobs[job_id]
     try:
         texts = df[text_col].fillna("").astype(str).tolist()
@@ -326,6 +408,8 @@ def _run_bulk(job_id: str, df: pd.DataFrame, text_col: str, rewrite: bool):
             "csv": out.to_csv(index=False),
         }
         job["status"], job["progress"] = "done", 1.0
+        auth.record_activity(user_id, "bulk", filename, float(out["heuristic_engagement_score"].mean()),
+                             detail=f"{len(out)} rows")
     except FriendlyError as e:
         job.update(status="error", error=e.title, hint=e.hint)
     except Exception as e:  # noqa: BLE001
@@ -333,7 +417,7 @@ def _run_bulk(job_id: str, df: pd.DataFrame, text_col: str, rewrite: bool):
 
 
 @app.post("/api/bulk")
-async def start_bulk(file: UploadFile = File(...), rewrite: bool = Form(True)):
+async def start_bulk(request: Request, file: UploadFile = File(...), rewrite: bool = Form(True)):
     try:
         df = pd.read_csv(io.BytesIO(await file.read()))
     except Exception as e:  # noqa: BLE001
@@ -347,7 +431,7 @@ async def start_bulk(file: UploadFile = File(...), rewrite: bool = Form(True)):
         _jobs.pop(jid, None)
     job_id = uuid.uuid4().hex
     _jobs[job_id] = {"status": "running", "progress": 0.0, "created": time.time(), "rows": len(df), "text_column": text_col}
-    threading.Thread(target=_run_bulk, args=(job_id, df, text_col, rewrite), daemon=True).start()
+    threading.Thread(target=_run_bulk, args=(job_id, df, text_col, rewrite, request.state.user_id, file.filename or "CSV"), daemon=True).start()
     return {"job_id": job_id, "rows": len(df), "text_column": text_col}
 
 
@@ -374,7 +458,7 @@ def _website_cached(url: str, pagespeed: bool, sentiment: bool, hour: int) -> di
 
 
 @app.post("/api/website")
-def website_audit(req: WebsiteRequest):
+def website_audit(req: WebsiteRequest, request: Request):
     require_dep("requests", "requests")
     require_dep("bs4", "beautifulsoup4")
     if not req.url.strip():
@@ -382,9 +466,13 @@ def website_audit(req: WebsiteRequest):
     website = _cached_loader("website")
     try:
         # results are cached for up to an hour per URL + options
-        return _website_cached(req.url.strip(), req.pagespeed, req.sentiment, int(time.time() // 3600))
+        result = _website_cached(req.url.strip(), req.pagespeed, req.sentiment, int(time.time() // 3600))
     except website.WebsiteAnalysisError as e:
         raise FriendlyError("Couldn't analyse that page.", str(e)) from e
+    scores = result.get("scores", {})
+    _record(request, "website", req.url.strip().split("?")[0], scores.get("seo"),
+            detail=f"SEO {scores.get('seo')} · GEO {scores.get('geo')}")
+    return result
 
 
 # ── Generative editing ───────────────────────────────────────────────────
@@ -398,7 +486,7 @@ def generate_estimate(steps: int = 25):
 
 
 @app.post("/api/generate")
-async def generate(image: UploadFile = File(...), prompt: str = Form(...), strength: float = Form(0.55),
+async def generate(request: Request, image: UploadFile = File(...), prompt: str = Form(...), strength: float = Form(0.55),
                    steps: int = Form(25), guidance: float = Form(7.5)):
     require_dep("diffusers", "diffusers accelerate")
     if not prompt.strip():
@@ -415,21 +503,23 @@ async def generate(image: UploadFile = File(...), prompt: str = Form(...), stren
         raise FriendlyError("Image generation failed.",
                             "This can happen with no internet connection (first-time model download), low "
                             "memory, or an unsupported prompt. Try a shorter prompt or fewer steps.", 500) from e
-    return {"image": to_data_url(generated), "before": image_report(img)["score"],
-            "after": image_report(generated)["score"]}
+    before, after = image_report(img)["score"], image_report(generated)["score"]
+    _record(request, "generate", prompt, after, detail=f"{before:.0f} → {after:.0f}")
+    return {"image": to_data_url(generated), "before": before, "after": after}
 
 
 # ── Precise editing ──────────────────────────────────────────────────────
 @app.post("/api/precise/background")
-async def swap_background(image: UploadFile = File(...), color: str = Form("#FFFFFF")):
+async def swap_background(request: Request, image: UploadFile = File(...), color: str = Form("#FFFFFF")):
     require_dep("rembg", "rembg")
     img = await read_image(image)
     try:
         swapped = _image_editing.swap_background_to_color(img, rgb_from_hex(color))
     except ImportError as e:
         raise FriendlyError("Background removal isn't available.", "Install it with `pip install rembg`.", 501) from e
-    return {"image": to_data_url(swapped), "before": image_report(img)["score"],
-            "after": image_report(swapped)["score"]}
+    before, after = image_report(img)["score"], image_report(swapped)["score"]
+    _record(request, "precise", f"Background → {color}", after, detail=f"{before:.0f} → {after:.0f}")
+    return {"image": to_data_url(swapped), "before": before, "after": after}
 
 
 @app.post("/api/precise/detect-text")
@@ -441,7 +531,7 @@ async def detect_text(image: UploadFile = File(...)):
 
 
 @app.post("/api/precise/replace-text")
-async def replace_text(image: UploadFile = File(...), bbox: str = Form(...), text: str = Form(...),
+async def replace_text(request: Request, image: UploadFile = File(...), bbox: str = Form(...), text: str = Form(...),
                        color: str = Form("#000000")):
     img = await read_image(image)
     try:
@@ -450,14 +540,34 @@ async def replace_text(image: UploadFile = File(...), bbox: str = Form(...), tex
     except Exception as e:  # noqa: BLE001
         raise FriendlyError("Invalid text region.") from e
     edited = _image_editing.replace_text(img, box, text, text_color=rgb_from_hex(color))
-    return {"image": to_data_url(edited), "before": image_report(img)["score"],
-            "after": image_report(edited)["score"]}
+    before, after = image_report(img)["score"], image_report(edited)["score"]
+    _record(request, "precise", f"Text → “{text}”", after, detail=f"{before:.0f} → {after:.0f}")
+    return {"image": to_data_url(edited), "before": before, "after": after}
 
 
 # ── Static site ──────────────────────────────────────────────────────────
+def _page(name: str) -> FileResponse:
+    return FileResponse(os.path.join(WEB_DIR, name))
+
+
+def _signed_in(request: Request) -> bool:
+    return bool(request.state.user_id and auth.get_user(request.state.user_id))
+
+
 @app.get("/")
-def index():
-    return FileResponse(os.path.join(WEB_DIR, "index.html"))
+def landing():
+    return _page("landing.html")
+
+
+@app.get("/login")
+@app.get("/signup")
+def login_page(request: Request):
+    return RedirectResponse("/app") if _signed_in(request) else _page("login.html")
+
+
+@app.get("/app")
+def workspace(request: Request):
+    return _page("index.html") if _signed_in(request) else RedirectResponse("/login?next=/app")
 
 
 app.mount("/static", StaticFiles(directory=WEB_DIR), name="static")
