@@ -41,7 +41,7 @@ of real engagement.
 
 import numpy as np
 from PIL import Image, ImageEnhance, ImageFilter, ImageOps, ImageStat
-from scipy.ndimage import convolve, uniform_filter1d
+from scipy.ndimage import convolve, gaussian_filter, sobel, uniform_filter1d
 
 
 # ── CLIP zero-shot scorer ─────────────────────────────────────────────
@@ -154,7 +154,15 @@ def _noise_sigma(gray: np.ndarray) -> float:
     unclipped = ((gray > 5) & (gray < 250))[1:-1, 1:-1]
     if unclipped.mean() < 0.01:
         return 0.0
-    return float(np.sqrt(np.pi / 2) * response[unclipped].mean() / 6)
+    # Real texture (sand, fabric, foliage) looks like grain to this filter, so
+    # measure only in the smoothest half of the frame: edges and texture are
+    # found on a blurred copy, where grain itself has been smoothed away.
+    smooth = gaussian_filter(gray, 2.0)
+    detail = np.hypot(sobel(smooth, 0), sobel(smooth, 1))[1:-1, 1:-1]
+    candidates = unclipped & (detail <= np.percentile(detail[unclipped], 50))
+    if candidates.mean() < 0.01:
+        candidates = unclipped
+    return float(np.sqrt(np.pi / 2) * response[candidates].mean() / 6)
 
 
 def extract_visual_features(image: Image.Image) -> dict:
@@ -171,6 +179,7 @@ def extract_visual_features(image: Image.Image) -> dict:
         "shadows": float(p1),                    # 1st percentile luminance (darkest tones)
         "highlights": float(p99),                # 99th percentile luminance (brightest tones)
         "dynamic_range": float(p99 - p1),        # tonal range, 0-255
+        "clipped": float((gray >= 250).mean()),   # share of pure-white pixels
         "saturation": ImageStat.Stat(rgb.convert("HSV")).mean[1],  # 0-255, reported only
         "blur": _focus_blur(gray),               # 0 sharp - 1 blurred (sharpest region)
         "blur_global": _reblur(gray)[0],         # same metric over the whole frame
@@ -210,11 +219,16 @@ def score_visual_features(features: dict) -> dict:
         # sharpest-region blur: in-focus images measure ~0.1-0.31 (photos and
         # graphics alike); a 2px Gaussian blur pushes them to ~0.46-0.65
         "focus": _ramp(f["blur"], 0.55, 0.32),
-        # underexposed = even the brightest parts are dark; washed out = even the darkest are light
-        "exposure": min(_ramp(f["highlights"], 80, 140), _ramp(f["shadows"], 200, 140)),
+        # underexposed = even the brightest parts are dark. Washed out = even the
+        # darkest tones are very light. Overexposed = lifted shadows (> 65) AND large
+        # blown-out areas; a product on a white background keeps its dark tones, so
+        # its white background isn't penalised.
+        "exposure": min(_ramp(f["highlights"], 80, 140), _ramp(f["shadows"], 175, 115),
+                        _ramp(f.get("clipped", 0) if f["shadows"] > 65 else 0, 0.20, 0.05)),
         "contrast": _ramp(f["dynamic_range"], 40, 110),
         "resolution": _ramp(short_side, 200, 600),
-        "noise": _ramp(f["noise"], 15, 6),
+        # measured in smooth areas only: clean photos ~0.3-3, visible grain 9+
+        "noise": _ramp(f["noise"], 9, 3),
         "framing": _ramp(ratio_off, 0.25, 0.03),
     }
 
@@ -284,6 +298,131 @@ def score_visual_features(features: dict) -> dict:
     }
 
 
+# ── Stock-photo watermark check (needs the optional easyocr package) ───
+# Reading the text in the image is what finds a watermark: stock agencies
+# stamp their name across preview images. A watermarked image can't be run
+# as an ad (it's an unlicensed preview), so it caps the score like a defect.
+STOCK_WATERMARKS = (
+    "shutterstock", "getty images", "gettyimages", "istock", "adobe stock", "alamy", "dreamstime",
+    "depositphotos", "123rf", "freepik", "vecteezy", "pond5", "bigstock", "canstock", "stock photo",
+    "watermark", "preview only",
+)
+WATERMARK_CAP = 40
+
+
+def _fuzzy_has(text: str, name: str) -> bool:
+    """True if `name` appears in OCR text, allowing a misread letter or two."""
+    from difflib import SequenceMatcher
+
+    text = "".join(ch for ch in text.lower() if ch.isalnum() or ch == " ")
+    squashed, target = text.replace(" ", ""), name.replace(" ", "")
+    if target in squashed:
+        return True
+    if len(target) <= 6:  # short names ("istock") must match exactly - fuzzy would hit "shutterstock"
+        return False
+    n = len(target)
+    return any(SequenceMatcher(None, squashed[i:i + n], target).ratio() >= 0.8
+               for i in range(0, max(1, len(squashed) - n + 1)))
+
+
+class WatermarkDetector:
+    def __init__(self):
+        import easyocr  # optional dependency - see Requirements.txt
+
+        self.reader = easyocr.Reader(["en"], gpu=False, verbose=False)
+
+    def detect(self, image: Image.Image) -> dict:
+        rgb = image.convert("RGB")
+        rgb.thumbnail((DISPLAY_SIZE, DISPLAY_SIZE), Image.LANCZOS)
+        gray = np.asarray(rgb.convert("L")).astype(np.float32)
+        # faint white overlays are much easier to read once the photo underneath is removed
+        detail = gray - gaussian_filter(gray, 6)
+        enhanced = np.clip(128 + 4 * detail, 0, 255).astype(np.uint8)
+        texts = []
+        for arr in (np.asarray(rgb), enhanced):
+            texts += [t for _, t, conf in self.reader.readtext(arr, rotation_info=[30, 330]) if conf > 0.1]
+        joined = " ".join(texts)
+        matches = sorted({name for name in STOCK_WATERMARKS if _fuzzy_has(joined, name)})
+        return {"available": True, "detected": bool(matches), "matches": matches, "text_found": texts[:12]}
+
+
+# ── AI-generated image indicator ─────────────────────────────────────────
+# Two kinds of evidence, reported separately:
+#   1. File metadata. Generators often write their name or settings into
+#      the file (Stable Diffusion "parameters", ComfyUI workflows, Firefly /
+#      DALL-E / ChatGPT Content Credentials). Strong evidence when present,
+#      but it's stripped by screenshots and most social apps.
+#   2. A pretrained detector model. Works on any pixels, but these models are
+#      known to be unreliable on generators and edits they weren't trained
+#      on, so the result is shown as a probability, never as proof.
+AI_METADATA_HINTS = (
+    "stable diffusion", "stablediffusion", "midjourney", "dall-e", "dall·e", "dalle", "firefly", "novelai",
+    "comfyui", "automatic1111", "invokeai", "leonardo.ai", "ideogram", "openai", "chatgpt", "gpt-4o",
+    "imagen", "trainedalgorithmicmedia", "compositewithtrainedalgorithmicmedia", "generated by ai",
+)
+# Chosen over Ateeqq/ai-vs-human-image-detector, which flagged 12 of 23 real
+# photos in our test set (eval/README.md). Below AI_UNSURE the model sees no
+# sign of generation; between the two it can't tell.
+AI_DETECTOR_MODEL = "umm-maybe/AI-image-detector"
+AI_THRESHOLD = 0.5
+AI_UNSURE = 0.3
+
+
+def ai_metadata_signals(image: Image.Image, raw_bytes: "bytes | None" = None) -> list:
+    found = []
+    info_keys = {str(k).lower() for k in image.info}
+    if info_keys & {"parameters", "prompt", "workflow", "sd-metadata", "dream"}:
+        found.append("image generator settings embedded in the file")
+    blobs = [str(v) for v in image.info.values() if isinstance(v, str)]
+    blobs += [v.decode("latin-1", "ignore") for v in image.info.values() if isinstance(v, bytes)]
+    try:
+        exif = image.getexif()
+        blobs += [str(exif.get(tag, "")) for tag in (0x0131, 0x010E, 0x013B, 0x9286)]
+    except Exception:  # noqa: BLE001
+        pass
+    if raw_bytes:
+        # Content Credentials (C2PA) and IPTC "digital source type" live in raw segments
+        blobs.append(raw_bytes[:4_000_000].decode("latin-1", "ignore"))
+    text = " ".join(blobs).lower()
+    for hint in AI_METADATA_HINTS:
+        if hint in text:
+            found.append(f"file metadata mentions \"{hint}\"")
+    return sorted(set(found))
+
+
+class AIImageDetector:
+    def __init__(self, model_name: str = AI_DETECTOR_MODEL):
+        from transformers import pipeline
+
+        self.model_name = model_name
+        self.pipe = pipeline("image-classification", model=model_name, device=-1)
+
+    def probability(self, image: Image.Image) -> float:
+        scores = self.pipe(image.convert("RGB"), top_k=None)
+        ai = [s["score"] for s in scores if any(k in s["label"].lower() for k in ("artificial", "ai", "fake", "generated"))]
+        return float(sum(ai)) if ai else 0.0
+
+
+def detect_ai_generated(image: Image.Image, detector: "AIImageDetector | None" = None,
+                        raw_bytes: "bytes | None" = None) -> dict:
+    signals = ai_metadata_signals(image, raw_bytes)
+    probability = None
+    if detector is not None:
+        try:
+            probability = detector.probability(image)
+        except Exception:  # noqa: BLE001 - metadata evidence still stands
+            probability = None
+    likely = bool(signals) or (probability is not None and probability >= AI_THRESHOLD)
+    if likely:
+        verdict = "likely"
+    elif probability is None:
+        verdict = "unknown"
+    else:
+        verdict = "unsure" if probability >= AI_UNSURE else "no_signs"
+    return {"likely": likely, "verdict": verdict, "probability": probability, "metadata_signals": signals,
+            "model": detector.model_name if detector else None}
+
+
 # ── Combined scorer ────────────────────────────────────────────────────
 CLIP_WEIGHT = 0.3
 
@@ -304,9 +443,12 @@ def score_label(score: float) -> str:
     return "high" if score >= 70 else "medium" if score >= 45 else "low"
 
 
-def score_image(image: Image.Image, clip_scorer: "ClipScorer | None" = None) -> dict:
+def score_image(image: Image.Image, clip_scorer: "ClipScorer | None" = None,
+                watermark_detector: "WatermarkDetector | None" = None,
+                ai_detector: "AIImageDetector | None" = None, raw_bytes: "bytes | None" = None) -> dict:
     """Combines the technical checks with CLIP appeal (if available) into
-    one 0-100 quality score + per-check explanations."""
+    one 0-100 quality score + per-check explanations. A stock watermark
+    caps the score; the AI-generated indicator is reported, not scored."""
     features = extract_visual_features(image)
     visual = score_visual_features(features)
 
@@ -319,9 +461,32 @@ def score_image(image: Image.Image, clip_scorer: "ClipScorer | None" = None) -> 
 
     combined = combine_scores(visual, clip_score)
     reasons = list(visual["reasons"])
-    if combined["capped"]:
-        reasons.insert(0, f"Score capped at {combined['cap']:.0f} by the {visual['cap_check']} check - "
+    checks = list(visual["checks"])
+    cap_check = visual["cap_check"] if combined["capped"] else None
+
+    watermark = {"available": False}
+    if watermark_detector is not None:
+        try:
+            watermark = watermark_detector.detect(image)
+        except Exception:  # noqa: BLE001 - OCR problems shouldn't break scoring
+            watermark = {"available": False}
+    if watermark.get("detected"):
+        names = ", ".join(watermark["matches"])
+        checks.append({"name": "watermark", "score": 0.0, "status": "fail", "critical": True, "weight": 0,
+                       "message": f"Stock-photo watermark found ({names}). This is an unlicensed preview - "
+                                  "license the image or use your own before running the ad."})
+        reasons.insert(0, checks[-1]["message"])
+        if combined["score"] > WATERMARK_CAP:
+            combined.update(score=WATERMARK_CAP, capped=True, cap=WATERMARK_CAP)
+            cap_check = "watermark"
+    elif watermark.get("available"):
+        checks.append({"name": "watermark", "score": 100.0, "status": "pass", "critical": True, "weight": 0,
+                       "message": "No stock-photo watermark found."})
+
+    if combined["capped"] and cap_check != "watermark":
+        reasons.insert(0, f"Score capped at {combined['cap']:.0f} by the {cap_check} check - "
                           "a defect this serious can't be offset by strengths elsewhere.")
+    ai_generated = detect_ai_generated(image, ai_detector, raw_bytes)
 
     return {
         "score": combined["score"],
@@ -330,8 +495,10 @@ def score_image(image: Image.Image, clip_scorer: "ClipScorer | None" = None) -> 
         "clip_score": clip_score,
         "feature_score": visual["feature_score"],
         "capped": combined["capped"],
-        "cap_check": visual["cap_check"] if combined["capped"] else None,
-        "checks": visual["checks"],
+        "cap_check": cap_check,
+        "checks": checks,
+        "watermark": watermark,
+        "ai_generated": ai_generated,
         "sub_scores": visual["sub_scores"],
         "reasons": reasons,
         "features": features,

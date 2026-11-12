@@ -34,6 +34,7 @@ const ICON_PATHS = {
   undo: '<path d="M9 14L4 9l5-5"/><path d="M4 9h11a5 5 0 0 1 0 10h-3"/>',
   trash: '<path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/>',
   refresh: '<path d="M20 11a8 8 0 1 0-2.3 5.7M20 4v7h-7"/>',
+  users: '<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0"/><path d="M16 4.5a3.5 3.5 0 0 1 0 7M18 14a6 6 0 0 1 3.5 6"/>',
   dashboard: '<rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/>',
   plus: '<path d="M12 5v14M5 12h14"/>',
 };
@@ -192,9 +193,12 @@ async function refreshStatus() {
     } else if (m.using_fallback) {
       dot.className = "dot dot-warn";
       label.innerHTML = 'Public baseline model<br><span class="muted">Run <code>02_model_training.py</code> to use your fine-tuned model.</span>';
-    } else {
+    } else if (m.fine_tuned) {
       dot.className = "dot dot-ok";
       label.textContent = "Fine-tuned sentiment model";
+    } else {
+      dot.className = "dot dot-ok";
+      label.innerHTML = 'Sentiment: Twitter RoBERTa<br><span class="muted">Chosen for ad copy - see <code>eval/README.md</code></span>';
     }
     $("#deps-list").innerHTML = s.optional_deps.map((d) =>
       `<li><span class="dot ${d.available ? "dot-ok" : "dot-off"}"></span>${esc(d.description)}</li>`).join("");
@@ -209,7 +213,7 @@ async function refreshStatus() {
 // ══════════════════════════════════════════════════════════════════════
 // Pages
 // ══════════════════════════════════════════════════════════════════════
-const S = { dashboard: {}, copy: {}, image: {}, bulk: {}, website: {}, generate: {}, precise: {}, canvas: {} };
+const S = { dashboard: {}, influencer: {}, copy: {}, image: {}, bulk: {}, website: {}, generate: {}, precise: {}, canvas: {} };
 
 // ── Ad Copy ──────────────────────────────────────────────────────────
 function pageCopy(view) {
@@ -300,7 +304,25 @@ function renderCopyResult(out, r, original) {
 }
 
 // ── Image Analysis ───────────────────────────────────────────────────
-const CHECK_TITLES = { focus: "Focus / sharpness", exposure: "Exposure", contrast: "Contrast", resolution: "Resolution", noise: "Noise / grain", framing: "Aspect ratio" };
+const CHECK_TITLES = { focus: "Focus / sharpness", exposure: "Exposure", contrast: "Contrast", resolution: "Resolution", noise: "Noise / grain", framing: "Aspect ratio", watermark: "Stock watermark" };
+
+const AI_VERDICT = {
+  likely: ["Likely AI-generated", "low"],
+  unsure: ["Can't tell", "medium"],
+  no_signs: ["No signs of AI generation", "high"],
+  unknown: ["Detector unavailable", "none"],
+};
+function aiCard(a) {
+  if (!a) return "";
+  const [text, cls] = AI_VERDICT[a.verdict] || AI_VERDICT.unknown;
+  const p = a.probability;
+  return `<div class="card"><div class="kpi-label">AI-generated? <span class="tag tag-model">Indicator</span></div>
+    <div class="row mt">${badge(text, cls)}${p != null ? `<span class="muted small">Detector: ${pct(p)} likely AI</span>` : ""}</div>
+    ${p != null ? `<div class="mt">${bar(100 * p, p >= 0.5 ? "low" : p >= 0.3 ? "medium" : "high")}</div>` : ""}
+    ${a.metadata_signals?.length ? `<ul class="list mt">${a.metadata_signals.map((m) => `<li class="bad">${esc(m[0].toUpperCase() + m.slice(1))}</li>`).join("")}</ul>` : ""}
+    <p class="kpi-sub mt" style="margin-bottom:0">An indicator, not proof: detectors miss many AI images and can be wrong about real photos.
+      File metadata is strong evidence when present, but screenshots and social apps strip it. Platforms such as Instagram may label AI images, so disclose AI use where required.</p></div>`;
+}
 
 function pageImage(view) {
   const st = S.image;
@@ -353,18 +375,19 @@ function pageImage(view) {
                   <div><span class="muted">CLIP appeal</span><b>${r.used_clip ? r.clip_score.toFixed(0) : "n/a"}</b></div></div>
               </div></div>
           </div>
+          ${aiCard(r.ai_generated)}
           ${r.trained_model ? `<div class="card"><div class="kpi-label">Predicted engagement <span class="tag tag-model">Trained model</span></div>
             <div class="kpi-value mt">${pct(r.trained_model.probability_top_third)}</div>
             <div class="kpi-sub">Chance this image lands in its creator's top third of posts. Validated on unseen accounts:
               AUC ${r.trained_model.auc.toFixed(2)} (95% CI ${r.trained_model.auc_ci[0].toFixed(2)}–${r.trained_model.auc_ci[1].toFixed(2)}).</div></div>` : ""}
           <div class="card"><div class="card-title">Technical checks</div>
             <p class="card-sub">Measured at feed size (long side 1080 px). A failed <span class="crit">Critical</span> check caps the
-              overall score at 30; heavy grain or very low contrast cap it at 45.</p>
+              overall score at 30, a stock-photo watermark at 40, and heavy grain or very low contrast at 45.</p>
             <div class="checks">${r.checks.map(checkRow).join("")}</div></div>
         </div>
       </div>
       <div class="card mt fade-in"><div class="card-title">What to fix</div>
-        <ul class="list">${reasons.map((t) => `<li class="${/capped|blurry|underexposed|washed out|very /i.test(t) ? "bad" : /note:|solid/i.test(t) ? "good" : "warn"}">${esc(t)}</li>`).join("")}</ul></div>
+        <ul class="list">${reasons.map((t) => `<li class="${/capped|blurry|underexposed|washed out|overexposed|watermark|very /i.test(t) ? "bad" : /note:|solid/i.test(t) ? "good" : "warn"}">${esc(t)}</li>`).join("")}</ul></div>
       <div class="card mt fade-in" id="img-style">
         <div class="card-title">Improve your creative</div>
         <p class="card-sub">Deterministic pixel adjustments, re-scored with the same checks. Auto-fix only corrects what the checks flagged; real blur can't be recovered.</p>
@@ -563,6 +586,119 @@ function histogram(rows) {
     `<span style="height:${(130 * b[k]) / max}px;background:${SENT_COLOR[k]}"></span>`).join("")}</div>`).join("")}</div>
     <div class="hist-axis"><span>${pct(lo)}</span><span>Confidence</span><span>100%</span></div>
     <div class="legend mt" style="flex-direction:row;gap:16px">${keys.map((k) => `<div><i style="background:${SENT_COLOR[k]}"></i>${k}</div>`).join("")}</div>`;
+}
+
+// ── Influencer Check ─────────────────────────────────────────────────
+const VERDICT_TIER = { "Looks organic": "high", "Some warning signs": "medium", "Likely inflated audience": "low" };
+const fmtInt = (n) => (n == null ? "-" : Math.round(n).toLocaleString("en-IN"));
+
+function pageInfluencer(view) {
+  const st = S.influencer;
+  view.innerHTML = `
+    <p class="lead">Check whether an Instagram account's audience looks real. Bought followers don't like or comment, so an account
+      that bought them gets far fewer likes than its follower count suggests. Bought likes show up as likes without comments,
+      or as single posts that spike far above normal.</p>
+    <div class="split">
+      <div class="card">
+        <div class="card-title">One account</div>
+        <p class="card-sub">Numbers from the account's profile and recent posts. Instagram doesn't allow automatic scraping.</p>
+        <div class="grid grid-2">
+          <div><label class="field" for="in-name">Account name <span class="muted">(optional)</span></label><input id="in-name" class="input" placeholder="@brand_or_creator"></div>
+          <div><label class="field" for="in-followers">Followers</label><input id="in-followers" class="input" inputmode="numeric" placeholder="e.g. 48,000"></div>
+          <div><label class="field" for="in-likes">Average likes per post</label><input id="in-likes" class="input" inputmode="numeric" placeholder="e.g. 1,350"></div>
+          <div><label class="field" for="in-comments">Average comments per post</label><input id="in-comments" class="input" inputmode="numeric" placeholder="e.g. 42"></div>
+          <div><label class="field" for="in-following">Following <span class="muted">(optional)</span></label><input id="in-following" class="input" inputmode="numeric" placeholder="e.g. 600"></div>
+        </div>
+        <label class="field mt" for="in-posts">Recent posts <span class="muted">(optional, replaces the averages)</span></label>
+        <textarea id="in-posts" class="input" style="min-height:90px" placeholder="One post per line: likes, comments&#10;1200, 40&#10;980, 31"></textarea>
+        <div class="row row-end mt"><button class="btn btn-primary" id="in-run">${icon("arrow")}Check account</button></div>
+      </div>
+      <div class="card">
+        <div class="card-title">Many accounts</div>
+        <p class="card-sub">Upload a CSV with one account per row: <code>username</code>, <code>followers</code>, <code>avg_likes</code>,
+          and optionally <code>avg_comments</code> and <code>following</code>.</p>
+        <div id="in-drop"></div>
+        <div class="note mt">${icon("alert")}<div>Rough rules of thumb, not proof. Niche, posting frequency and a recent viral post all move these numbers.
+          The expected engagement per account size is set in <code>config.py</code>.</div></div>
+      </div>
+    </div>
+    <div id="in-out"></div>`;
+  const ids = ["name", "followers", "likes", "comments", "following", "posts"];
+  ids.forEach((k) => { const el = $(`#in-${k}`); el.value = st[k] || ""; el.addEventListener("input", () => { st[k] = el.value; }); });
+  const num = (k) => { const v = String(st[k] || "").replace(/[^\d.]/g, ""); return v ? Number(v) : null; };
+  const out = $("#in-out");
+  $("#in-run").addEventListener("click", (e) => withBusy(e.currentTarget, async () => {
+    if (!num("followers")) { $("#in-followers").focus(); return toast("Enter the follower count."); }
+    try {
+      st.result = await api("/api/influencer", { json: { name: st.name || "", followers: num("followers"), following: num("following"),
+        avg_likes: num("likes"), avg_comments: num("comments"), posts: st.posts || "" } });
+      st.table = null;
+      renderInfluencer(out, st.result);
+    } catch (err) { out.innerHTML = `<div class="mt">${errorNote(err)}</div>`; }
+  }));
+  $("#in-drop").append(dropzone({
+    accept: ".csv,text/csv", title: "Drop an accounts CSV, or click to upload", sub: "Comma-separated", compact: true,
+    onFile: async (f) => {
+      out.innerHTML = `<div class="skeleton mt" style="height:200px"></div>`;
+      try { st.table = (await api("/api/influencer/csv", { form: formOf({ file: f }) })).results; st.result = null; renderInfluencerTable(out, st.table); }
+      catch (err) { out.innerHTML = `<div class="mt">${errorNote(err)}</div>`; }
+    },
+  }));
+  if (st.result) renderInfluencer(out, st.result);
+  else if (st.table) renderInfluencerTable(out, st.table);
+}
+
+function renderInfluencer(out, r) {
+  const tier = VERDICT_TIER[r.verdict] || "medium";
+  const vsTypical = Math.min(100, (100 * r.engagement_rate) / (2 * r.typical_rate));
+  out.innerHTML = `
+    <div class="split mt fade-in">
+      <div class="card">
+        <div class="kpi-label">Audience authenticity ${heuristicTag}</div>
+        <div class="score-block mt">${ring(r.authenticity, { tier })}
+          <div class="stack" style="flex:1">
+            <div>${badge(r.verdict, tier)}</div>
+            <div class="kpi-sub">${esc(r.name || "This account")} · ${esc(r.tier)} account${r.posts ? ` · ${r.posts} posts` : ""}</div>
+          </div></div>
+        <div class="metrics mt">
+          <div class="metric"><span>Engagement rate</span><b>${r.engagement_rate.toFixed(2)}%</b></div>
+          <div class="metric"><span>Likes ÷ followers</span><b>${r.like_rate.toFixed(2)}%</b></div>
+          <div class="metric"><span>Comments / 100 likes</span><b>${r.comments_per_100_likes.toFixed(1)}</b></div>
+          <div class="metric"><span>Typical for size</span><b>~${r.typical_rate}%</b></div>
+          <div class="metric"><span>Expected min. likes</span><b>${fmtInt(r.expected_likes)}</b></div>
+          <div class="metric"><span>Actual avg. likes</span><b>${fmtInt(r.avg_likes)}</b></div>
+        </div>
+        <div class="mt"><div class="row small"><span class="muted">Engagement vs typical (${r.typical_rate}%)</span><span class="spacer"></span>
+          <span class="muted">floor ${r.min_rate}%</span></div>${bar(vsTypical, tier)}</div>
+      </div>
+      <div class="card"><div class="card-title">Why</div>
+        <ul class="list">${r.flags.map((t) => `<li class="bad">${esc(t)}</li>`).join("")}${r.notes.map((t) => `<li class="good">${esc(t)}</li>`).join("")}</ul></div>
+    </div>`;
+  animate(out);
+}
+
+function renderInfluencerTable(out, rows) {
+  const ok = rows.filter((r) => !r.error);
+  const counts = { "Looks organic": 0, "Some warning signs": 0, "Likely inflated audience": 0 };
+  ok.forEach((r) => { counts[r.verdict] += 1; });
+  out.innerHTML = `
+    <div class="grid grid-3 mt fade-in">${Object.entries(counts).map(([k, v]) =>
+      `<div class="card stat-tile"><div class="kpi-label">${esc(k)}</div><div class="kpi-value">${v}</div><div class="kpi-sub">of ${ok.length} accounts</div></div>`).join("")}</div>
+    <div class="card mt fade-in"><div class="row"><div class="card-title">Accounts</div><span class="spacer"></span>
+      <button class="btn btn-secondary" id="in-dl">${icon("download")}Download CSV</button></div>
+      <div class="table-wrap mt"><table><thead><tr><th>Account</th><th>Followers</th><th>Avg likes</th><th>Engagement</th><th>Comments / 100 likes</th><th>Verdict</th><th>Main reason</th></tr></thead><tbody>
+      ${rows.map((r) => r.error ? `<tr><td>${esc(r.name)}</td><td colspan="6" class="muted">${esc(r.error)}</td></tr>` : `<tr>
+        <td>${esc(r.name || "-")}</td><td class="num">${fmtInt(r.followers)}</td><td class="num">${fmtInt(r.avg_likes)}</td>
+        <td class="num">${r.engagement_rate.toFixed(2)}%</td><td class="num">${r.comments_per_100_likes.toFixed(1)}</td>
+        <td>${badge(r.verdict, VERDICT_TIER[r.verdict])}</td><td class="wide">${esc(r.flags[0] || r.notes[0] || "")}</td></tr>`).join("")}
+      </tbody></table></div></div>`;
+  $("#in-dl").addEventListener("click", () => {
+    const head = ["account", "followers", "avg_likes", "avg_comments", "engagement_rate", "comments_per_100_likes", "verdict", "reasons"];
+    const q = (v) => `"${String(v ?? "").replace(/"/g, '""')}"`;
+    const lines = ok.map((r) => [r.name, r.followers, r.avg_likes, r.avg_comments, r.engagement_rate.toFixed(3),
+      r.comments_per_100_likes.toFixed(2), r.verdict, r.flags.join(" | ")].map(q).join(","));
+    downloadText([head.join(","), ...lines].join("\n"), "influencer_check.csv", "text/csv");
+  });
 }
 
 // ── Website Audit ────────────────────────────────────────────────────
@@ -996,6 +1132,7 @@ const KINDS = {
   image: { label: "Image", page: "image" },
   bulk: { label: "Bulk CSV", page: "bulk" },
   website: { label: "Website", page: "website" },
+  influencer: { label: "Influencer", page: "influencer" },
   generate: { label: "Generative edit", page: "generate" },
   precise: { label: "Precise edit", page: "precise" },
 };
@@ -1004,6 +1141,7 @@ const TOOL_BLURBS = {
   image: "Six quality checks at feed size",
   bulk: "Score a whole campaign CSV at once",
   website: "SEO, GEO and Core Web Vitals",
+  influencer: "Spot bought followers from likes vs followers",
   generate: "Restyle a creative with Stable Diffusion",
   precise: "Swap backgrounds or replace text",
   canvas: "Annotate, crop and add text",
@@ -1147,6 +1285,7 @@ const PAGES = [
   { id: "image", group: "Analyze", title: "Image Analysis", icon: "image", render: pageImage },
   { id: "bulk", group: "Analyze", title: "Bulk Analysis", icon: "table", render: pageBulk },
   { id: "website", group: "Analyze", title: "Website Audit", icon: "globe", render: pageWebsite },
+  { id: "influencer", group: "Analyze", title: "Influencer Check", icon: "users", render: pageInfluencer },
   { id: "generate", group: "Create & Edit", title: "Generative Editing", icon: "sparkles", render: pageGenerate },
   { id: "precise", group: "Create & Edit", title: "Precise Editing", icon: "target", render: pagePrecise },
   { id: "canvas", group: "Create & Edit", title: "Canvas Editor", icon: "pen", render: pageCanvas },

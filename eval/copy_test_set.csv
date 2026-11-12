@@ -1,0 +1,181 @@
+id,text,label,has_cta,has_urgency,split
+1,Diwali Sale is here! Grab 30% off sitewide and light up your home this festive season ✨,positive,1,0,dev
+2,"🔥 BIG NEWS! Your favourites just got better! Get 30% OFF our entire collection! Limited-time offer, only until Sunday!",positive,1,1,test
+3,"Run lighter, go further! Our new CloudStep shoes are built for all-day comfort. Grab yours today, 30% off ends Sunday!",positive,1,1,dev
+4,"Fresh roast every morning. 20% off this week only, order now!",positive,1,1,test
+5,"Treat yourself this weekend. Buy one, get one free on all pizzas 🍕",positive,1,0,dev
+6,"Happy Holi from all of us! Celebrate with colours, sweets and 25% off our festive range 🌈",positive,0,0,test
+7,"Meet the all-new Aurora X: brighter screen, longer battery, unbelievable price. Pre-order now!",positive,1,0,dev
+8,"Glowing skin in 7 days, guaranteed. Try our vitamin C serum today and see the difference.",positive,1,0,test
+9,"Your dream vacation to Goa starts here. Book now and save ₹5,000 on beach resorts!",positive,1,0,dev
+10,"Weekend vibes, sorted ☕ Two lattes for the price of one, every Saturday.",positive,0,0,test
+11,Last chance! Our biggest sale of the year ends at midnight. Shop now before it's gone!,positive,1,1,dev
+12,Only 10 left in stock! Grab the bestselling hoodie everyone's talking about.,positive,1,1,test
+13,"New season, new you. Discover the spring collection, now in stores and online 🌸",positive,1,0,dev
+14,We just hit 1 million happy customers! Thank you for loving us. Here's 15% off as a thank-you gift ❤️,positive,0,0,test
+15,Learn coding from India's top mentors. Join the free masterclass this Sunday and start your tech career!,positive,1,1,dev
+16,"Delicious, healthy and ready in 10 minutes. Order your first meal kit today and get free delivery!",positive,1,0,test
+17,Upgrade your workouts with smart earbuds that never fall out. Shop the launch offer now.,positive,1,0,dev
+18,"Big savings, bigger smiles! Up to 50% off kids' toys this Children's Day 🎈",positive,0,0,test
+19,Sleep better tonight. Our memory foam mattress comes with a 100-night free trial.,positive,0,0,dev
+20,"Unlock premium for free for 3 months. Sign up today, cancel anytime.",positive,1,0,test
+21,Make every moment sparkle. Explore our handcrafted gold jewellery this wedding season 💍,positive,1,0,dev
+22,"Faster internet, happier home. Switch to FiberMax and enjoy 300 Mbps at an amazing price!",positive,1,0,test
+23,Celebrate Eid with our special biryani feast. Order now and get a free dessert!,positive,1,0,dev
+24,"The wait is over! Our flagship store opens tomorrow, come say hi and enjoy free samples 🎉",positive,1,0,test
+25,"Feel the difference with 100% organic cotton. Soft on skin, kind to the planet.",positive,0,0,dev
+26,Get fit with friends! Bring a buddy and both get your first month free.,positive,1,0,test
+27,Shop the hottest summer styles at prices you'll love. Free shipping over ₹999!,positive,1,0,dev
+28,"This Valentine's, say it with flowers 🌹 Same-day delivery across the city.",positive,0,0,test
+29,Your car deserves the best. Book a premium service today and get a free wash.,positive,1,0,dev
+30,"Award-winning taste, now in a new mango flavour. Try it today!",positive,1,0,test
+31,"Plan smarter, save more. Download the app and get ₹100 cashback on your first bill payment.",positive,1,0,dev
+32,"Snuggle season is here! Cosy blankets now 40% off. Hurry, while stocks last!",positive,1,1,test
+33,Brighten your mornings with our new sunrise alarm lamp. Wake up refreshed every day.,positive,0,0,dev
+34,"Join 50,000 learners who aced their exams with our study planner. Start your free trial now!",positive,1,0,test
+35,"Tired of boring lunches? Our new salad bowls are fresh, crunchy and packed with flavour. Order today!",positive,1,0,dev
+36,Back pain holding you back? Our ergonomic chair gives you all-day comfort. Try it risk-free for 30 days.,positive,1,0,test
+37,"Golden hour, golden deals ✨ Flash sale on all sunglasses for the next 6 hours!",positive,0,1,dev
+38,Mom deserves the world. Surprise her this Mother's Day with our curated gift boxes 💐,positive,1,0,test
+39,"Experience luxury for less. Stay 3 nights, pay for 2 at our hill resorts.",positive,0,0,dev
+40,"Good food, great company, unbeatable prices. See you at our new café!",positive,0,0,test
+41,Claim your free welcome kit when you open a savings account this month!,positive,1,1,dev
+42,Effortless style for every occasion. Shop the new ethnic wear collection 🌟,positive,1,0,test
+43,Turn your photos into memories that last. Order a custom photo book with 20% off today.,positive,1,1,dev
+44,"Crafted with love, baked fresh daily. Visit our bakery for warm croissants every morning 🥐",positive,1,0,test
+45,Stream the biggest blockbusters in 4K. Subscribe now and get the first month on us!,positive,1,0,dev
+46,"Say hello to clear, healthy skin with dermatologist-approved care. Shop now.",positive,1,0,test
+47,Weekend getaway? Rent a car from just ₹999 a day and hit the road!,positive,1,0,dev
+48,"Our customers love us! Rated 4.8 stars by over 20,000 shoppers. See why today.",positive,1,0,test
+49,Cook like a chef with our non-stick cookware set. Launch price for the first 100 buyers!,positive,0,1,dev
+50,Bring home happiness: adopt a pet this weekend at our free adoption camp 🐶,positive,1,0,test
+51,"Light, fast and powerful: the new UltraBook is here. Experience it in stores now.",positive,1,0,dev
+52,"Diwali dhamaka! Flat ₹500 off on orders above ₹2,499. Shop now!",positive,1,0,test
+53,Smile brighter with our teeth whitening kit. Visible results in just one week!,positive,0,0,dev
+54,"Fuel your day with our protein bars: 20g protein, zero added sugar, totally delicious.",positive,0,0,test
+55,Escape the ordinary. Explore Kerala's backwaters with our all-inclusive houseboat package.,positive,1,0,dev
+56,Reward yourself! Earn double points on every purchase this week only.,positive,1,1,test
+57,Fresh from the farm to your door. Get 15% off your first veggie box!,positive,1,0,dev
+58,"Your skin will thank you. Natural, cruelty-free makeup now available nationwide.",positive,0,0,test
+59,Score big this cricket season! Jerseys and gear at unbeatable prices 🏏,positive,0,0,dev
+60,Celebrate love with our anniversary special: candlelight dinner for two at 30% off.,positive,0,0,test
+61,"Our store is open from 10 am to 9 pm, Monday to Saturday.",neutral,0,0,dev
+62,"The new model has a 6.5-inch display, 128 GB storage and a 5,000 mAh battery.",neutral,0,0,test
+63,Orders placed after 5 pm will be shipped the next business day.,neutral,0,0,dev
+64,Our office will be closed on 15 August for Independence Day.,neutral,0,0,test
+65,This product contains milk and may contain traces of nuts.,neutral,0,0,dev
+66,Returns are accepted within 30 days with the original receipt.,neutral,0,0,test
+67,The webinar will be held on Zoom at 4 pm IST on Thursday.,neutral,0,0,dev
+68,"Our customer care number is 1800-123-4567, available 24 hours.",neutral,0,0,test
+69,"Available in black, white and navy blue. Sizes S to XXL.",neutral,0,0,dev
+70,"We have moved to a new address: 12 MG Road, Pune.",neutral,0,0,test
+71,Prices include GST. Delivery charges are calculated at checkout.,neutral,0,0,dev
+72,The annual general meeting is scheduled for 20 September.,neutral,0,0,test
+73,Our app is available on Android and iOS.,neutral,0,0,dev
+74,Each pack contains 12 sachets of 10 grams.,neutral,0,0,test
+75,Parking is available in the basement of the building.,neutral,0,0,dev
+76,The course runs for 8 weeks with two classes per week.,neutral,0,0,test
+77,"Payment can be made by UPI, card or net banking.",neutral,0,0,dev
+78,Our terms of service have been updated. You can read them in the app settings.,neutral,0,0,test
+79,The library will follow revised timings during the exam period.,neutral,0,0,dev
+80,"Store in a cool, dry place away from direct sunlight.",neutral,0,0,test
+81,The event will take place at the city convention centre.,neutral,0,0,dev
+82,Version 2.4 of the app includes performance improvements and bug fixes.,neutral,0,0,test
+83,"Our head office is located in Mumbai, with branches in Delhi and Bengaluru.",neutral,0,0,dev
+84,Registration for the marathon closes on 30 November.,neutral,0,1,test
+85,The menu includes vegetarian and non-vegetarian options.,neutral,0,0,dev
+86,Delivery is currently available in 25 cities across India.,neutral,0,0,test
+87,"To reset your password, go to Settings and select Account.",neutral,0,0,dev
+88,The warranty covers manufacturing defects for one year.,neutral,0,0,test
+89,This listing is for the 500 ml bottle.,neutral,0,0,dev
+90,Results of the lucky draw will be announced on our website on Monday.,neutral,0,0,test
+91,Our support team replies to emails within two working days.,neutral,0,0,dev
+92,The workshop is open to students from all departments.,neutral,0,0,test
+93,Product dimensions: 30 cm x 20 cm x 10 cm. Weight: 1.2 kg.,neutral,0,0,dev
+94,The showroom is located next to the metro station.,neutral,0,0,test
+95,"Cash on delivery is available for orders below ₹10,000.",neutral,0,0,dev
+96,Our quarterly report is now available on the investor relations page.,neutral,0,0,test
+97,Visit our website for more information.,neutral,1,0,dev
+98,The new branch in Nashik begins operations on 1 December.,neutral,0,0,test
+99,Each ticket admits one person.,neutral,0,0,dev
+100,We accept orders for bulk and corporate gifting.,neutral,0,0,test
+101,Batteries are not included.,neutral,0,0,dev
+102,Appointments can be booked through the clinic's front desk.,neutral,0,0,test
+103,The magazine is published on the first Monday of every month.,neutral,0,0,dev
+104,This is a reminder that your subscription renews on 5 January.,neutral,0,0,test
+105,The building has wheelchair access on the ground floor.,neutral,0,0,dev
+106,Our menu changes every season based on local produce.,neutral,0,0,test
+107,The update will be rolled out to all users over the next two weeks.,neutral,0,0,dev
+108,Sizes run true to fit. Refer to the size chart for measurements.,neutral,0,0,test
+109,The seminar will cover tax rules for small businesses.,neutral,0,0,dev
+110,Our shop accepts both cash and digital payments.,neutral,0,0,test
+111,Tickets can be collected at the box office one hour before the show.,neutral,0,0,dev
+112,The bus service runs every 20 minutes from the main gate.,neutral,0,0,test
+113,This item is made of stainless steel and is dishwasher safe.,neutral,0,0,dev
+114,Our customer survey takes about five minutes to complete.,neutral,0,0,test
+115,The gym is open on all days except public holidays.,neutral,0,0,dev
+116,The new policy applies to all orders placed from 1 March.,neutral,0,0,test
+117,Fill in the form to request a product catalogue.,neutral,1,0,dev
+118,"We are hiring for roles in sales, design and operations.",neutral,0,0,test
+119,The price of the basic plan is ₹299 per month.,neutral,0,0,dev
+120,Our next newsletter will be sent on Friday.,neutral,0,0,test
+121,"We're sorry: due to a technical issue, orders placed today may be delayed by 3-4 days.",negative,0,0,dev
+122,Our app is currently down. We apologise for the inconvenience and are working on a fix.,negative,0,0,test
+123,"Unfortunately, this product has been discontinued and will no longer be available.",negative,0,0,dev
+124,"Due to rising costs, our subscription price will increase from next month.",negative,0,0,test
+125,We regret to inform you that the concert has been cancelled.,negative,0,0,dev
+126,Important: we are recalling batch 2231 of our baby formula due to possible contamination. Stop using it immediately.,negative,1,1,test
+127,Your payment failed. Your account will be suspended if the bill is not paid.,negative,0,0,dev
+128,We have experienced a data breach affecting some customer email addresses.,negative,0,0,test
+129,"Sorry, we're out of stock and don't know when this item will be back.",negative,0,0,dev
+130,Flights are delayed because of heavy fog. We apologise for the disruption.,negative,0,0,test
+131,"We messed up. Some customers were charged twice, and we're truly sorry.",negative,0,0,dev
+132,Our Andheri branch is closing permanently. Thank you for years of support.,negative,0,0,test
+133,Service outage: internet may be unavailable in your area until tomorrow evening.,negative,0,0,dev
+134,We're disappointed to announce that the festival has been postponed indefinitely.,negative,0,0,test
+135,Your order could not be delivered because the address was incorrect.,negative,0,0,dev
+136,We apologise for the poor experience you had at our restaurant last week.,negative,0,0,test
+137,Deliveries in your area are suspended until further notice due to flooding.,negative,0,0,dev
+138,"Unfortunately, your refund request has been rejected.",negative,0,0,test
+139,The free plan will be shut down next month and all data on it will be deleted.,negative,0,0,dev
+140,We're aware that many of you received damaged products. This is unacceptable and we apologise.,negative,0,0,test
+141,"Due to a supplier problem, all orders this week will arrive late.",negative,0,0,dev
+142,"Sadly, our founder passed away last night. The store will remain closed today.",negative,0,0,test
+143,Warning: fake websites are using our name to cheat customers. We never ask for your OTP.,negative,0,0,dev
+144,The update caused crashes for some users. We've paused the rollout while we fix it.,negative,0,0,test
+145,Prices on all items will go up by 15% from 1 April.,negative,0,0,dev
+146,Customer care is facing very long wait times. We're sorry for the frustration.,negative,0,0,test
+147,Our website was hacked and is temporarily offline.,negative,0,0,dev
+148,This offer is no longer valid. The coupon has expired.,negative,0,0,test
+149,We're sorry to see you go. Your account has been closed.,negative,0,0,dev
+150,Shipping to international addresses has been stopped indefinitely.,negative,0,0,test
+151,The event venue has changed at the last minute due to a booking error. We apologise.,negative,0,0,dev
+152,Several stores will face power cuts this weekend and billing may be slow.,negative,0,0,test
+153,"Unfortunately, we lost your parcel in transit.",negative,0,0,dev
+154,"Due to staff shortages, the café will close early every day this month.",negative,0,0,test
+155,We failed to meet our delivery promise this festive season and we're sorry.,negative,0,0,dev
+156,The product you reviewed has been reported for quality problems.,negative,0,0,test
+157,Our servers are overloaded and checkout keeps failing. Please bear with us.,negative,0,0,dev
+158,The pool will be closed for two months due to damage to the filtration system.,negative,0,0,test
+159,We regret that the tickets you booked were sold in error and must be cancelled.,negative,0,0,dev
+160,Bad news: the summer collection launch is delayed by six weeks.,negative,0,0,test
+161,Your subscription has expired and your saved projects have been locked.,negative,0,0,dev
+162,We've had complaints about rude staff at our store and we're deeply sorry.,negative,0,0,test
+163,"Heavy rains have damaged our warehouse, so most items are unavailable.",negative,0,0,dev
+164,The loyalty programme is ending and unused points will be lost.,negative,0,0,test
+165,A bug deleted some users' saved addresses. We apologise and are restoring them.,negative,0,0,dev
+166,"Unfortunately, we can no longer offer free delivery on small orders.",negative,0,0,test
+167,Our partner bank's cards are not working on the app right now.,negative,0,0,dev
+168,Your booking could not be confirmed because the hotel is overbooked.,negative,0,0,test
+169,"We're sorry, the item you ordered arrived broken. A replacement will take two weeks.",negative,0,0,dev
+170,"The quality of our last batch was not good enough, so we have pulled it from shelves.",negative,0,0,test
+171,Traffic restrictions mean deliveries in the city centre will be very slow today.,negative,0,0,dev
+172,We were wrong to raise prices without notice. We apologise to every customer.,negative,0,0,test
+173,The match has been called off due to rain. Refunds will take up to 10 days.,negative,0,0,dev
+174,Our helpline is not working today because of a network failure.,negative,0,0,test
+175,We've had to cancel all weekend workshops because the trainer is unwell.,negative,0,0,dev
+176,This version of the app will stop working next week. You will lose access unless you update.,negative,1,1,test
+177,"Unfortunately, the discount code you used was invalid, so your order has been cancelled.",negative,0,0,dev
+178,We are disappointed that our product did not meet your expectations.,negative,0,0,test
+179,The courier strike means all deliveries are on hold.,negative,0,0,dev
+180,Our restaurant failed its hygiene inspection and is closed until further notice.,negative,0,0,test

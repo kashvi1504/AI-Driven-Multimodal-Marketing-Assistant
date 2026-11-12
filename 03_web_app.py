@@ -17,7 +17,7 @@ Site:
   /login        -> log in / sign up (local accounts, see auth.py)
   /app          -> the workspace (needs a login):
     Overview      -> Dashboard
-    Analyze       -> Ad Copy, Image Analysis, Bulk Analysis, Website Audit
+    Analyze       -> Ad Copy, Image Analysis, Bulk Analysis, Website Audit, Influencer Check
     Create & Edit -> Generative Editing, Precise Editing, Canvas Editor
 """
 
@@ -41,7 +41,8 @@ from pydantic import BaseModel
 
 import auth
 import copy_analysis as ca
-from config import BASE_DIR, IMAGE_ENGAGEMENT, MODEL_DIR
+import influencer_check as ic
+from config import BASE_DIR, BULK_MAX_ROWS, COPY_SENTIMENT_MODEL, IMAGE_ENGAGEMENT, MODEL_DIR
 
 WEB_DIR = os.path.join(BASE_DIR, "web")
 MAX_UPLOAD_MB = 25
@@ -63,7 +64,7 @@ _image_editing = _load_module_by_path("image_editing", "06_image_editing.py")
 
 OPTIONAL_DEPS = {
     "rembg": "Background removal (Precise Editing)",
-    "easyocr": "Text detection (Precise Editing)",
+    "easyocr": "Text detection (Precise Editing, watermark check)",
     "diffusers": "Stable Diffusion (Generative Editing)",
     "requests": "Website Audit (fetching pages)",
     "bs4": "Website Audit (HTML parsing)",
@@ -86,6 +87,22 @@ def _load_clip():
         return None
 
 
+def _load_watermark():
+    if importlib.util.find_spec("easyocr") is None:
+        return None
+    try:
+        return _image_analysis.WatermarkDetector()
+    except Exception:  # noqa: BLE001 - the quality score still works without it
+        return None
+
+
+def _load_ai_detector():
+    try:
+        return _image_analysis.AIImageDetector()
+    except Exception:  # noqa: BLE001 - metadata evidence is still checked
+        return None
+
+
 def _load_image_model():
     if not os.path.exists(IMAGE_ENGAGEMENT["model_path"]):
         return None
@@ -96,8 +113,11 @@ def _load_image_model():
 
 
 _LOADERS = {
-    "sentiment": lambda: _model_training.SentimentPredictor(MODEL_DIR),
+    "sentiment": lambda: _model_training.SentimentPredictor(
+        MODEL_DIR if COPY_SENTIMENT_MODEL == "fine-tuned" else COPY_SENTIMENT_MODEL),
     "clip": _load_clip,
+    "watermark": _load_watermark,
+    "ai_detector": _load_ai_detector,
     "sd": lambda: _generative_editing.StableDiffusionEditor(),
     "image_model": _load_image_model,
     "website": lambda: _load_module_by_path("website_analysis", "09_website_analysis.py"),
@@ -138,7 +158,7 @@ def _warm_up():
 
 
 # ── Helpers ──────────────────────────────────────────────────────────────
-async def read_image(upload: UploadFile) -> Image.Image:
+async def read_image(upload: UploadFile, with_bytes: bool = False):
     data = await upload.read()
     if len(data) > MAX_UPLOAD_MB * 1024 * 1024:
         raise FriendlyError(f"That image is larger than {MAX_UPLOAD_MB} MB.", "Please upload a smaller file.", 413)
@@ -147,7 +167,7 @@ async def read_image(upload: UploadFile) -> Image.Image:
         image.load()
     except (UnidentifiedImageError, OSError) as e:
         raise FriendlyError("That file doesn't look like a valid image.", "Please upload a JPG, PNG or WebP.") from e
-    return image.convert("RGB")
+    return (image, data) if with_bytes else image.convert("RGB")
 
 
 def to_data_url(image: Image.Image) -> str:
@@ -163,9 +183,13 @@ def rgb_from_hex(hex_color: str) -> tuple:
     return tuple(int(h[i:i + 2], 16) for i in (0, 2, 4))
 
 
-def image_report(image: Image.Image) -> dict:
-    """Quality score from 04 (+ the trained engagement model, if one exists)."""
-    result = _image_analysis.score_image(image, clip_scorer=clip_scorer())
+def image_report(image: Image.Image, full: bool = False, raw_bytes: "bytes | None" = None) -> dict:
+    """Quality score from 04 (+ the trained engagement model, if one exists).
+    full=True also runs the slower watermark (OCR) and AI-generated checks -
+    only the main analysis needs those, not every before/after comparison."""
+    extra = {"watermark_detector": _cached_loader("watermark"), "ai_detector": _cached_loader("ai_detector"),
+             "raw_bytes": raw_bytes} if full else {}
+    result = _image_analysis.score_image(image, clip_scorer=clip_scorer(), **extra)
     result["features"] = {k: (round(v, 4) if isinstance(v, float) else v) for k, v in result["features"].items()}
     model = _cached_loader("image_model")
     result["trained_model"] = None
@@ -241,9 +265,11 @@ def status():
     except Exception:  # noqa: BLE001
         cuda = False
     sentiment = _models.get("sentiment")
-    using_fallback = sentiment.using_fallback if sentiment is not None else None
     return {
-        "sentiment_model": {"ready": using_fallback is not None, "using_fallback": using_fallback,
+        "sentiment_model": {"ready": sentiment is not None,
+                            "using_fallback": sentiment.using_fallback if sentiment else None,
+                            "fine_tuned": sentiment.fine_tuned if sentiment else None,
+                            "name": sentiment.source.split("/")[-1] if sentiment else None,
                             "fine_tuned_available": os.path.isdir(MODEL_DIR)},
         "image_model_available": os.path.exists(IMAGE_ENGAGEMENT["model_path"]),
         "cuda": cuda,
@@ -339,8 +365,9 @@ def analyze_copy(req: CopyRequest, request: Request):
 # ── Image analysis ───────────────────────────────────────────────────────
 @app.post("/api/image/analyze")
 async def analyze_image(request: Request, image: UploadFile = File(...)):
-    img = await read_image(image)
-    report = image_report(img)
+    original, data = await read_image(image, with_bytes=True)
+    img = original.convert("RGB")
+    report = image_report(original, full=True, raw_bytes=data)
     _record(request, "image", image.filename or "Image", report["score"], report["label"],
             f"{img.width}×{img.height}")
     return report
@@ -387,10 +414,10 @@ def _run_bulk(job_id: str, df: pd.DataFrame, text_col: str, rewrite: bool, user_
         out["engagement_reason"] = [" | ".join(e["reasons"]) for e in engs]
 
         if rewrite:
-            refined = []
-            for n, (t, r, e, o) in enumerate(zip(texts, results, engs, offers), 1):
-                refined.append(ca.refine_low_engagement_copy(t, r["label"], e["engagement_score"], o))
-                job["progress"] = 0.5 + 0.5 * n / len(texts)
+            def progress(frac):
+                job["progress"] = 0.5 + 0.5 * frac
+            refined = ca.refine_batch([(t, r["label"], e["engagement_score"], o)
+                                       for t, r, e, o in zip(texts, results, engs, offers)], progress=progress)
             out["refined_text"] = [x["refined_text"] for x in refined]
             out["refined_heuristic_engagement_score"] = [round(x["after_score"], 1) for x in refined]
             out["heuristic_score_change"] = [round(x["score_change"], 1) for x in refined]
@@ -424,6 +451,9 @@ async def start_bulk(request: Request, file: UploadFile = File(...), rewrite: bo
         raise FriendlyError("Couldn't read that CSV.", "Check the file is a valid, comma-separated CSV.") from e
     if df.empty or len(df.columns) == 0:
         raise FriendlyError("That CSV looks empty - nothing to analyze.")
+    if len(df) > BULK_MAX_ROWS:
+        raise FriendlyError(f"That CSV has {len(df):,} rows - the limit is {BULK_MAX_ROWS:,} per upload.",
+                            "Split it into smaller files. See eval/bulk_benchmark.md for timings.")
     text_col = next((c for c in df.columns
                      if any(k in str(c).lower() for k in ["text", "content", "caption", "copy", "post"])), df.columns[0])
     # drop finished jobs older than an hour so memory doesn't grow forever
@@ -441,6 +471,47 @@ def bulk_status(job_id: str):
     if job is None:
         raise FriendlyError("That analysis job no longer exists.", "Start it again.", 404)
     return {k: v for k, v in job.items() if k != "created"}
+
+
+# ── Influencer check ─────────────────────────────────────────────────────
+class InfluencerRequest(BaseModel):
+    name: str = ""
+    followers: float
+    following: "float | None" = None
+    avg_likes: "float | None" = None
+    avg_comments: "float | None" = None
+    posts: str = ""  # optional: one post per line, "likes, comments"
+
+
+@app.post("/api/influencer")
+def influencer_check(req: InfluencerRequest, request: Request):
+    try:
+        result = ic.check_account(req.followers, req.avg_likes, req.avg_comments, req.following,
+                                  ic.parse_posts(req.posts), name=req.name.strip())
+    except ValueError as e:
+        raise FriendlyError(str(e)) from e
+    _record(request, "influencer", result["name"] or f"{int(req.followers):,} followers",
+            result["authenticity"], detail=f"{result['verdict']} · ER {result['engagement_rate']:.2f}%")
+    return result
+
+
+@app.post("/api/influencer/csv")
+async def influencer_csv(request: Request, file: UploadFile = File(...)):
+    try:
+        df = pd.read_csv(io.BytesIO(await file.read()))
+    except Exception as e:  # noqa: BLE001
+        raise FriendlyError("Couldn't read that CSV.", "Check the file is a valid, comma-separated CSV.") from e
+    if df.empty:
+        raise FriendlyError("That CSV looks empty.")
+    if len(df) > BULK_MAX_ROWS:
+        raise FriendlyError(f"That CSV has {len(df):,} rows - the limit is {BULK_MAX_ROWS:,}.")
+    try:
+        results = ic.check_accounts_table(df)
+    except ValueError as e:
+        raise FriendlyError(str(e), "Example columns: username, followers, avg_likes, avg_comments, following.") from e
+    flagged = sum(1 for r in results if r.get("verdict") == "Likely inflated audience")
+    _record(request, "influencer", file.filename or "Accounts CSV", detail=f"{len(results)} accounts · {flagged} flagged")
+    return {"results": results}
 
 
 # ── Website audit ────────────────────────────────────────────────────────

@@ -264,9 +264,10 @@ class SentimentPredictor:
         predictor.predict(["Boost your productivity with our AI tool!"])
         # -> [{"label": "positive", "confidence": 0.94, "scores": {...}}]
 
-    Falls back to the public cardiffnlp checkpoint if no fine-tuned
-    model is found at model_path, so the web app never hard-crashes
-    just because training hasn't been run yet.
+    model_path is a local folder (a fine-tuned model) or a Hugging Face
+    model id. Falls back to the public cardiffnlp checkpoint if the folder
+    doesn't exist, so the web app never hard-crashes just because training
+    hasn't been run yet.
     """
 
     FALLBACK_MODEL = "cardiffnlp/twitter-roberta-base-sentiment-latest"
@@ -275,9 +276,17 @@ class SentimentPredictor:
         import torch
         from transformers import pipeline
 
-        self.device = 0 if torch.cuda.is_available() else -1
-        source = model_path if os.path.isdir(model_path) else self.FALLBACK_MODEL
-        self.using_fallback = source == self.FALLBACK_MODEL
+        if torch.cuda.is_available():
+            self.device = 0
+        elif torch.backends.mps.is_available() and not os.getenv("FORCE_CPU"):
+            self.device = "mps"  # Apple-silicon GPU
+        else:
+            self.device = -1
+        is_hub_id = "/" in model_path and not os.path.isabs(model_path) and not model_path.startswith(".")
+        source = model_path if os.path.isdir(model_path) or is_hub_id else self.FALLBACK_MODEL
+        self.source = source
+        self.fine_tuned = os.path.isdir(source)
+        self.using_fallback = source == self.FALLBACK_MODEL and model_path != self.FALLBACK_MODEL
         self.pipe = pipeline(
             "text-classification",
             model=source,
@@ -289,7 +298,8 @@ class SentimentPredictor:
     def predict(self, texts: list) -> list:
         if isinstance(texts, str):
             texts = [texts]
-        raw_results = self.pipe(texts)
+        # batched, and long copy is truncated to the model's limit instead of crashing
+        raw_results = self.pipe(texts, batch_size=32, truncation=True)
 
         outputs = []
         for scores in raw_results:

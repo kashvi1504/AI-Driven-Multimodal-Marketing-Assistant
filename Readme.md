@@ -207,6 +207,20 @@ python 02_model_training.py
 Use the RoBERTa option when you have GPU access (college lab) — training
 it on a CPU laptop will be very slow.
 
+### Which model the web app uses for ad copy
+
+Our fine-tuned DistilBERT scores 86% on its own test set, but that set is
+mostly general text (movie-review phrases and tweets). On 180 hand-labelled
+**ad copies** (`eval/copy_test_set.csv`) it called most positive sales copy
+"neutral". The public `cardiffnlp/twitter-roberta-base-sentiment-latest`
+(trained on ~124M tweets, so it reads emojis and promotional slang) is far
+more accurate on ads, so the Ad Copy and Bulk pages use it by default.
+The numbers are in `eval/README.md`. To use the fine-tuned model instead:
+
+```bash
+COPY_SENTIMENT_MODEL=fine-tuned python 03_web_app.py
+```
+
 ## Using the trained model elsewhere
 
 `02_model_training.py` starts with a digit, so it can't be imported with
@@ -278,11 +292,23 @@ viewer actually sees):
 | Check | Method | Weight | Caps the score? |
 |---|---|---|---|
 | Focus | No-reference re-blur metric (Crété-Roffet et al., 2007) on the sharpest ~10% of textured regions, so a sharp product on a deliberately soft background passes | 35% | Yes - at 30 ("low") |
-| Exposure | 1st/99th luminance percentiles: only images with no highlights (underexposed) or no shadows (washed out) fail, so dark luxury or white-background ads aren't penalised for their style | 20% | Yes - at 30 |
+| Exposure | 1st/99th luminance percentiles plus the share of blown-out pure-white pixels: images with no highlights (underexposed), no real shadows (washed out), or lifted shadows *and* large blown-out areas (overexposed) fail. A product on a white background keeps its dark tones, so dark luxury or white-background ads aren't penalised for their style | 20% | Yes - at 30 |
 | Resolution | Shortest side (fails below ~200 px, passes from 600 px) | 15% | Yes - at 30 |
 | Contrast | Tonal range (1st-99th percentile) | 15% | Yes - at 45 |
-| Noise | Immerkær fast noise estimate, ignoring clipped pure black/white areas | 10% | Yes - at 45 |
+| Noise | Immerkær fast noise estimate, measured only in the smoothest half of the frame (so texture like sand or fabric isn't mistaken for grain) and ignoring clipped pure black/white areas | 10% | Yes - at 45 |
 | Framing | Distance to a standard ad ratio (1:1, 4:5, 3:4, 2:3, 9:16, 4:3, 16:9, 1.91:1) | 5% | No |
+| Stock watermark | OCR (`easyocr`) on the image and on a contrast-enhanced copy, looking for stock agency names (Shutterstock, Getty Images, iStock, Adobe Stock, Alamy, ...) | 0% | Yes - at 40: a watermarked image is an unlicensed preview and can't run as an ad |
+
+**AI-generated indicator** (reported, not scored): two kinds of evidence,
+shown separately. (1) File metadata - Stable Diffusion settings, ComfyUI
+workflows, and Content Credentials (C2PA) from ChatGPT/DALL-E, Firefly
+and others; strong when present, but stripped by screenshots and most
+social apps. (2) The pretrained `umm-maybe/AI-image-detector` model,
+shown as a probability with three levels (likely AI / can't tell / no
+signs). It was chosen over `Ateeqq/ai-vs-human-image-detector`, which
+flagged 12 of 23 real photos in our test set. Detectors like this miss
+many images from generators they weren't trained on, so the page says
+"indicator, not proof".
 
 Colour saturation is reported but **not scored** - muted, monochrome
 and black-and-white ads are a style choice, not a defect.
@@ -299,8 +325,10 @@ Thresholds were calibrated on real photos and graphic ads at controlled
 blur (Gaussian σ 0-10), noise, exposure, contrast and resolution levels:
 every image blurred at σ ≥ 2 rates "low"; sharp originals, flat-design
 ads, dark-themed ads and white-background product shots rate "high".
-Known limit: grain is judged at feed size, so fine grain on a very large
-image (which downscaling smooths out) isn't penalised.
+Known limits: grain is judged at feed size, so fine grain on a very large
+image (which downscaling smooths out) isn't penalised; and a clean image
+that is texture everywhere (raked sand, a sugar-crusted biscuit) can read
+as grainy. Measured accuracy on 128 test images is in `eval/README.md`.
 
 ### Why there's no engagement *prediction* from images by default
 
@@ -525,7 +553,7 @@ engagement scores.
 ## Web app pages
 
 **Public site**
-- **Home** (`/`) — what Sentiment Studio does, the seven tools, how it works, why it's trustworthy, and a FAQ.
+- **Home** (`/`) — what Sentiment Studio does, the eight tools, how it works, why it's trustworthy, and a FAQ.
 - **Log in / Sign up** (`/login`, `/signup`) — local accounts (see below).
 
 **Overview**
@@ -533,9 +561,10 @@ engagement scores.
 
 **Analyze**
 - **Ad Copy** — sentiment + heuristic engagement + explanation + rewrite suggestion for one piece of copy.
-- **Image Analysis** — creative-quality score with per-check results (focus, exposure, contrast, noise, resolution, framing), measurements, what to fix, and deterministic style presets (auto-fix, warm tone, punchy, etc.) with re-scored before/after comparison.
-- **Bulk Analysis** — same sentiment/engagement pipeline over a CSV of copy, with progress, charts, tables and a CSV download.
+- **Image Analysis** — creative-quality score with per-check results (focus, exposure, contrast, noise, resolution, framing, stock watermark), an AI-generated indicator, measurements, what to fix, and deterministic style presets (auto-fix, warm tone, punchy, etc.) with re-scored before/after comparison.
+- **Bulk Analysis** — same sentiment/engagement pipeline over a CSV of copy, with progress, charts, tables and a CSV download. Up to 20,000 rows per upload (`BULK_MAX_ROWS`); 1,000 rows take ~4 s without rewrites and ~3 min with them on an Apple-silicon Mac (`eval/bulk_benchmark.md`).
 - **Website Audit** — SEO / GEO checklist, Core Web Vitals and copy sentiment for one web page (see "Website SEO/GEO analysis").
+- **Influencer Check** — likes-to-followers ratio and engagement rate against what's typical for the account's size, comments per 100 likes, per-post spikes and following/followers balance, to spot bought followers or likes (`influencer_check.py`). One account by hand, or many from a CSV. The "typical" thresholds are rules of thumb in `config.INFLUENCER_CHECK`.
 
 **Create & Edit**
 - **Generative Editing** — Stable Diffusion img2img restyling from a text prompt.
@@ -565,4 +594,13 @@ python -m py_compile *.py             # syntax check
 python 01_data_preprocessing.py       # should always succeed - see step 2
 python 02_model_training.py           # needs data/processed/*.csv from step above
 python 03_web_app.py                  # open http://127.0.0.1:8000
+```
+
+**Accuracy tests** (results and method in `eval/README.md`):
+
+```bash
+python eval/build_copy_test_set.py    # 180 hand-labelled ad copies -> eval/copy_test_set.csv
+python eval/build_image_test_set.py --sources <folder of clean images> --realworld <folder of real ads>
+python eval/evaluate.py               # held-out test split -> eval/results.md
+python eval/benchmark_bulk.py         # Bulk Analysis timings -> eval/bulk_benchmark.md
 ```

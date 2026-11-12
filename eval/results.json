@@ -1,0 +1,356 @@
+{
+ "copy": {
+  "rows": 90,
+  "split": "test",
+  "models": {
+   "Fine-tuned DistilBERT (ours)": {
+    "accuracy": 0.7666666666666667,
+    "macro_f1": 0.769446451799393,
+    "confusion": [
+     [
+      24,
+      5,
+      1
+     ],
+     [
+      1,
+      27,
+      2
+     ],
+     [
+      0,
+      12,
+      18
+     ]
+    ],
+    "seconds": 0.29552268981933594,
+    "wrong": [
+     {
+      "text": "\ud83d\udd25 BIG NEWS! Your favourites just got better! Get 30% OFF our entire collection! Limited-time offer, only until Sunday!",
+      "true": "positive",
+      "pred": "neutral"
+     },
+     {
+      "text": "Fresh roast every morning. 20% off this week only, order now!",
+      "true": "positive",
+      "pred": "neutral"
+     },
+     {
+      "text": "Glowing skin in 7 days, guaranteed. Try our vitamin C serum today and see the difference.",
+      "true": "positive",
+      "pred": "neutral"
+     },
+     {
+      "text": "Weekend vibes, sorted \u2615 Two lattes for the price of one, every Saturday.",
+      "true": "positive",
+      "pred": "neutral"
+     },
+     {
+      "text": "Big savings, bigger smiles! Up to 50% off kids' toys this Children's Day \ud83c\udf88",
+      "true": "positive",
+      "pred": "neutral"
+     },
+     {
+      "text": "Unlock premium for free for 3 months. Sign up today, cancel anytime.",
+      "true": "positive",
+      "pred": "neutral"
+     },
+     {
+      "text": "The wait is over! Our flagship store opens tomorrow, come say hi and enjoy free samples \ud83c\udf89",
+      "true": "positive",
+      "pred": "neutral"
+     },
+     {
+      "text": "This Valentine's, say it with flowers \ud83c\udf39 Same-day delivery across the city.",
+      "true": "positive",
+      "pred": "neutral"
+     },
+     {
+      "text": "Snuggle season is here! Cosy blankets now 40% off. Hurry, while stocks last!",
+      "true": "positive",
+      "pred": "neutral"
+     },
+     {
+      "text": "Back pain holding you back? Our ergonomic chair gives you all-day comfort. Try it risk-free for 30 days.",
+      "true": "positive",
+      "pred": "neutral"
+     },
+     {
+      "text": "Bring home happiness: adopt a pet this weekend at our free adoption camp \ud83d\udc36",
+      "true": "positive",
+      "pred": "neutral"
+     },
+     {
+      "text": "Diwali dhamaka! Flat \u20b9500 off on orders above \u20b92,499. Shop now!",
+      "true": "positive",
+      "pred": "neutral"
+     },
+     {
+      "text": "Store in a cool, dry place away from direct sunlight.",
+      "true": "neutral",
+      "pred": "positive"
+     },
+     {
+      "text": "The warranty covers manufacturing defects for one year.",
+      "true": "neutral",
+      "pred": "negative"
+     },
+     {
+      "text": "The workshop is open to students from all departments.",
+      "true": "neutral",
+      "pred": "positive"
+     },
+     {
+      "text": "Due to rising costs, our subscription price will increase from next month.",
+      "true": "negative",
+      "pred": "neutral"
+     },
+     {
+      "text": "Important: we are recalling batch 2231 of our baby formula due to possible contamination. Stop using it immediately.",
+      "true": "negative",
+      "pred": "neutral"
+     },
+     {
+      "text": "Flights are delayed because of heavy fog. We apologise for the disruption.",
+      "true": "negative",
+      "pred": "neutral"
+     },
+     {
+      "text": "Our Andheri branch is closing permanently. Thank you for years of support.",
+      "true": "negative",
+      "pred": "positive"
+     },
+     {
+      "text": "Due to staff shortages, the caf\u00e9 will close early every day this month.",
+      "true": "negative",
+      "pred": "neutral"
+     },
+     {
+      "text": "This version of the app will stop working next week. You will lose access unless you update.",
+      "true": "negative",
+      "pred": "neutral"
+     }
+    ]
+   },
+   "Twitter RoBERTa (app default)": {
+    "accuracy": 0.9666666666666667,
+    "macro_f1": 0.9666419478432827,
+    "confusion": [
+     [
+      28,
+      1,
+      1
+     ],
+     [
+      0,
+      30,
+      0
+     ],
+     [
+      0,
+      1,
+      29
+     ]
+    ],
+    "seconds": 0.3761711120605469,
+    "wrong": [
+     {
+      "text": "Unlock premium for free for 3 months. Sign up today, cancel anytime.",
+      "true": "positive",
+      "pred": "neutral"
+     },
+     {
+      "text": "Due to rising costs, our subscription price will increase from next month.",
+      "true": "negative",
+      "pred": "neutral"
+     },
+     {
+      "text": "Our Andheri branch is closing permanently. Thank you for years of support.",
+      "true": "negative",
+      "pred": "positive"
+     }
+    ]
+   }
+  },
+  "has_cta": {
+   "precision": 0.9565217391304348,
+   "recall": 0.9565217391304348,
+   "f1": 0.9565217391304348
+  },
+  "has_urgency": {
+   "precision": 0.8888888888888888,
+   "recall": 1.0,
+   "f1": 0.9411764705882353
+  },
+  "engagement_by_label": {
+   "negative": 26.4,
+   "neutral": 33.1,
+   "positive": 79.2
+  }
+ },
+ "images": {
+  "images": 128,
+  "seconds_per_image": 5.74176069535315,
+  "watermark_feature": true,
+  "ai_feature": true,
+  "by_category": {
+   "ai": {
+    "n": 13,
+    "mean_score": 81.5,
+    "min": 64.5,
+    "max": 84.6
+   },
+   "banner": {
+    "n": 9,
+    "mean_score": 81.3,
+    "min": 75.0,
+    "max": 85.0,
+    "expected": "at least Fair (>= 45)",
+    "passed": 9
+   },
+   "blur": {
+    "n": 10,
+    "mean_score": 30.0,
+    "min": 30.0,
+    "max": 30.0,
+    "expected": "Needs work (< 45)",
+    "passed": 10
+   },
+   "bright": {
+    "n": 10,
+    "mean_score": 30.2,
+    "min": 30.0,
+    "max": 31.8,
+    "expected": "Needs work (< 45)",
+    "passed": 10
+   },
+   "clean": {
+    "n": 10,
+    "mean_score": 87.2,
+    "min": 81.8,
+    "max": 94.4,
+    "expected": "Good (>= 70)",
+    "passed": 10
+   },
+   "clean_lowres": {
+    "n": 12,
+    "mean_score": 77.0,
+    "min": 45.0,
+    "max": 84.6,
+    "expected": "at least Fair (>= 45)",
+    "passed": 12
+   },
+   "dark": {
+    "n": 10,
+    "mean_score": 30.0,
+    "min": 30.0,
+    "max": 30.0,
+    "expected": "Needs work (< 45)",
+    "passed": 10
+   },
+   "noise": {
+    "n": 10,
+    "mean_score": 51.3,
+    "min": 45.0,
+    "max": 76.4,
+    "expected": "not Good (< 70)",
+    "passed": 8
+   },
+   "realworld": {
+    "n": 4,
+    "mean_score": 55.9,
+    "min": 37.3,
+    "max": 86.0
+   },
+   "tiny": {
+    "n": 10,
+    "mean_score": 30.0,
+    "min": 30.0,
+    "max": 30.0,
+    "expected": "Needs work (< 45)",
+    "passed": 10
+   },
+   "wm_center": {
+    "n": 10,
+    "mean_score": 40.0,
+    "min": 40.0,
+    "max": 40.0,
+    "expected": "watermark flagged, < 70",
+    "passed": 10
+   },
+   "wm_corner": {
+    "n": 10,
+    "mean_score": 40.0,
+    "min": 40.0,
+    "max": 40.0,
+    "expected": "watermark flagged, < 70",
+    "passed": 10
+   },
+   "wm_tiled": {
+    "n": 10,
+    "mean_score": 49.8,
+    "min": 40.0,
+    "max": 89.7,
+    "expected": "watermark flagged, < 70",
+    "passed": 8
+   }
+  },
+  "quality_pass_rate": 0.963963963963964,
+  "realworld": [
+   {
+    "file": "real__bdr283rwynjm1vb2vquginf04qqu.jpg",
+    "score": 86.0,
+    "label": "high"
+   },
+   {
+    "file": "real__bts.jpg",
+    "score": 41.5,
+    "label": "low"
+   },
+   {
+    "file": "real__images_2.jpg",
+    "score": 37.3,
+    "label": "low"
+   },
+   {
+    "file": "real__images.jpg",
+    "score": 58.9,
+    "label": "medium"
+   }
+  ],
+  "ai_detection": {
+   "ai_images": 13,
+   "ai_flagged": 6,
+   "real_images": 23,
+   "real_flagged": 1
+  },
+  "watermark_detection": {
+   "watermarked": 30,
+   "flagged": 28,
+   "unwatermarked": 94,
+   "false_flags": 0
+  },
+  "failures": [
+   {
+    "file": "Smart_Banking_Storyboards.pptx_(1)__noise.jpg",
+    "category": "noise",
+    "score": 76.4
+   },
+   {
+    "file": "Smart_Banking_Storyboards.pptx_(1)__wm_tiled.jpg",
+    "category": "wm_tiled",
+    "score": 88.2
+   },
+   {
+    "file": "Smart_Banking_Storyboards.pptx__noise.jpg",
+    "category": "noise",
+    "score": 76.3
+   },
+   {
+    "file": "Smart_Banking_Storyboards.pptx__wm_tiled.jpg",
+    "category": "wm_tiled",
+    "score": 89.7
+   }
+  ]
+ }
+}

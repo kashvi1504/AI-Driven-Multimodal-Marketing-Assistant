@@ -255,14 +255,15 @@ td.wide { min-width: 280px; }
 .quick { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 14px; }
 .quick a { display: flex; gap: 14px; align-items: flex-start; padding: 18px; border-radius: 16px; background: var(--surface); border: 1px solid var(--border); text-decoration: none; color: var(--text); box-shadow: var(--shadow); transition: transform .2s, box-shadow .2s, border-color .2s; }
 .quick a:hover { transform: translateY(-3px); box-shadow: var(--shadow-md); border-color: var(--accent-ring); }
-.quick b { display: block; font-size: .95rem; }
-.quick span { display: block; color: var(--text-3); font-size: .82rem; margin-top: 2px; }
+.quick a > div > b { display: block; font-size: .95rem; }
+.quick a > div > span { display: block; color: var(--text-3); font-size: .82rem; margin-top: 2px; }
 .q-ico { width: 40px; height: 40px; border-radius: 11px; display: grid; place-items: center; color: #fff; flex: none; }
 .q-ico svg { width: 19px; height: 19px; fill: none; stroke: currentColor; stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round; }
 .qc-copy { background: linear-gradient(135deg, #6A4CFF, #8E4BFF); } .qc-image { background: linear-gradient(135deg, #FF5E9C, #FF8A5B); }
 .qc-bulk { background: linear-gradient(135deg, #12B5A6, #22C55E); } .qc-website { background: linear-gradient(135deg, #2F80ED, #56CCF2); }
 .qc-generate { background: linear-gradient(135deg, #A64BFF, #FF5E9C); } .qc-precise { background: linear-gradient(135deg, #F59E0B, #F97316); }
 .qc-canvas { background: linear-gradient(135deg, #475569, #64748B); }
+.qc-influencer { background: linear-gradient(135deg, #DB2777, #9333EA); }
 .activity { display: flex; flex-direction: column; }
 .act { display: grid; grid-template-columns: 40px minmax(0, 1fr) auto; gap: 14px; align-items: center; padding: 12px 0; border-top: 1px solid var(--border); text-decoration: none; color: inherit; }
 .act:first-child { border-top: 0; padding-top: 0; }

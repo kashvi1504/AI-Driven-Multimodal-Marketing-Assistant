@@ -114,6 +114,7 @@
 .c3 { background: linear-gradient(135deg, #12B5A6, #22C55E); } .c4 { background: linear-gradient(135deg, #2F80ED, #56CCF2); }
 .c5 { background: linear-gradient(135deg, #A64BFF, #FF5E9C); } .c6 { background: linear-gradient(135deg, #F59E0B, #F97316); }
 .c7 { background: linear-gradient(135deg, #475569, #64748B); }
+.c8 { background: linear-gradient(135deg, #DB2777, #9333EA); }
 .tv-bars { display: flex; align-items: flex-end; gap: 8px; height: 92px; width: 100%; }
 .tv-bars i { flex: 1; border-radius: 6px 6px 3px 3px; background: var(--accent-soft); position: relative; }
 .tv-bars i:nth-child(odd) { background: var(--accent); opacity: .75; }

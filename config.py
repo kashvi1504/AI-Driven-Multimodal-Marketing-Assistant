@@ -11,6 +11,25 @@ import os
 # Everything is relative to this file, so the project runs the same
 # no matter which machine (laptop / college PC) you clone it onto.
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
+
+def _load_env_file(path: str) -> None:
+    """Reads KEY=value lines from a private .env file (git-ignored) into the
+    environment, so secrets like PAGESPEED_API_KEY don't have to be typed on
+    every start. Variables already set in the shell win."""
+    if not os.path.exists(path):
+        return
+    with open(path, encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            key, value = line.split("=", 1)
+            os.environ.setdefault(key.strip(), value.strip().strip('"').strip("'"))
+
+
+_load_env_file(os.path.join(BASE_DIR, ".env"))
+
 DATA_DIR = os.path.join(BASE_DIR, "data")
 RAW_DIR = os.path.join(DATA_DIR, "raw")
 PROCESSED_DIR = os.path.join(DATA_DIR, "processed")
@@ -82,6 +101,17 @@ ROWS_PER_CLASS = int(os.environ.get("SENTIMENT_ROWS_PER_CLASS", 8000))
 # have GPU access (college lab) for a real accuracy boost.
 MODEL_NAME = os.environ.get("SENTIMENT_MODEL_NAME", "distilbert-base-uncased")
 
+# Model the web app uses for Ad Copy sentiment. Measured on our hand-labelled
+# ad-copy test set (eval/copy_test_set.csv), the public Twitter RoBERTa model
+# reads marketing language far better than our DistilBERT, which was
+# fine-tuned on general text (see eval/README.md for the numbers).
+# Set COPY_SENTIMENT_MODEL=fine-tuned to use models/best_model instead.
+COPY_SENTIMENT_MODEL = os.environ.get("COPY_SENTIMENT_MODEL", "cardiffnlp/twitter-roberta-base-sentiment-latest")
+
+# Bulk Analysis upload limit (rows). Analysis alone handles ~5,000 rows in
+# a few minutes; the limit only protects memory. See eval/bulk_benchmark.md.
+BULK_MAX_ROWS = int(os.environ.get("BULK_MAX_ROWS", 20_000))
+
 MAX_LENGTH = 128
 SEED = 42
 
@@ -137,6 +167,25 @@ IMAGE_ENGAGEMENT = {
     "label_quantile": 1 / 3,      # top third = 1, bottom third = 0, middle third unlabeled
     "batch_size": 32,
     "bootstrap_reps": 1000,
+}
+
+# ── Influencer Check (influencer_check.py) ────────────────────────────
+# Engagement rate = (avg likes + avg comments) / followers. Instagram
+# engagement falls as accounts grow, so the expected level depends on size.
+# These are ROUGH RULES OF THUMB in line with commonly published industry
+# ranges, not measured from our own data - adjust them as you see fit.
+INFLUENCER_CHECK = {
+    "tiers": [
+        {"name": "nano (<10k)", "max_followers": 10_000, "typical_rate": 4.0, "min_rate": 1.5},
+        {"name": "micro (10k-100k)", "max_followers": 100_000, "typical_rate": 2.5, "min_rate": 1.0},
+        {"name": "mid-tier (100k-500k)", "max_followers": 500_000, "typical_rate": 1.5, "min_rate": 0.6},
+        {"name": "macro (500k-1M)", "max_followers": 1_000_000, "typical_rate": 1.2, "min_rate": 0.5},
+        {"name": "mega (1M+)", "max_followers": float("inf"), "typical_rate": 1.0, "min_rate": 0.3},
+    ],
+    "suspicious_high_rate": 20.0,       # % - above this, check for bought likes / pods
+    "min_comments_per_100_likes": 0.5,  # fewer comments than this per 100 likes looks like bought likes
+    "spike_factor": 5.0,                # a post with > 5x the median likes is flagged
+    "follow_back_max_followers": 50_000,  # following > followers only matters for smaller accounts
 }
 
 # ── Website SEO/GEO analysis (09_website_analysis.py) ─────────────────

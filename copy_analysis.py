@@ -24,11 +24,67 @@ NEGATIVE_WORDS = {
     "bad", "problem", "issue", "delay", "fail", "broken", "worst", "slow",
     "error", "late", "down", "unhappy", "hard", "difficult",
 }
-CTA_WORDS = {"try", "start", "get", "shop", "buy", "join", "download", "learn", "book", "claim"}
-URGENCY_WORDS = {"now", "today", "limited", "hurry", "last", "deadline", "only"}
+# A call to action is an instruction to the reader, so these verbs only
+# count at the start of a phrase ("Grab yours", "Book now", "Sign up") -
+# "you get 2 free" or "can be booked" are not calls to action.
+CTA_VERBS = {
+    "shop", "buy", "order", "grab", "get", "try", "book", "call", "visit", "explore", "discover", "download",
+    "install", "subscribe", "join", "register", "claim", "start", "learn", "apply", "reserve", "see", "treat",
+    "tap", "click", "enrol", "enroll", "switch", "contact", "fill", "request", "rent", "adopt", "bring", "come",
+    "surprise", "earn", "unlock", "stream", "watch", "stop", "hurry", "preorder", "pre-order",
+}
+CTA_PHRASES = ("sign up", "check out", "find out", "don't miss", "dont miss", "act now", "reward yourself")
+# Urgency means a real time limit or scarcity - "now" alone ("now in stores")
+# or "today" alone ("order today") is not.
+URGENCY_PATTERNS = [
+    (r"\b(ends?|ending)\b", "ends"),
+    (r"\b(off|offer|sale|deal|valid|only|price|discount|free)\b[^.!?]{0,30}\b(until|till)\b", "until"),
+    (r"\blast (chance|day|days|few|call)\b", "last chance"),
+    (r"\b(only )?\d+ (left|remaining)\b", "only N left"),
+    (r"\bwhile stocks? lasts?\b", "while stocks last"),
+    (r"\blimited[- ](time|period|stock|edition|offer)\b", "limited time"),
+    (r"\bhurry\b", "hurry"),
+    (r"\b(today|tonight|this week|this weekend) only\b|\bonly (today|tonight|this week|until|till)\b", "today only"),
+    (r"\bmidnight\b", "midnight"),
+    (r"\bexpir(es|ing|y)\b", "expires"),
+    (r"\bnext \d+ (hours?|minutes?|days?)\b", "next N hours"),
+    (r"\bflash sale\b", "flash sale"),
+    (r"\bbefore it'?s gone\b", "before it's gone"),
+    (r"\bdon'?t miss\b", "don't miss"),
+    (r"\bfirst \d+ (buyers|customers|orders|people)\b", "first N buyers"),
+    (r"\bdeadline\b|\bcloses? on\b", "deadline"),
+    (r"\b(off|offer|deal|price|discount)\b[^.!?]{0,25}\btoday\b", "offer today"),
+    (r"\b(off|offer|sale|deal|only|price|discount|free)\b[^.!?]{0,30}\bthis (sunday|monday|tuesday|wednesday|thursday|friday|saturday|month|week|weekend)\b", "this week"),
+    (r"\bimmediately\b|\bnext week\b", "immediately"),
+    (r"\b(won'?t|will not|doesn'?t|does not) last\b|\bselling fast\b|\balmost gone\b|\b(few|limited) (left|seats|spots)\b", "won't last"),
+]
 
 
-# ── Feature analysis + explanations (sentiment/engagement logic, unchanged) ──
+def _clause_starts(text: str) -> list:
+    """First one or two words of every phrase, ignoring emoji and symbols."""
+    starts = []
+    for clause in re.split(r"[.!?\n,:;—–]+|\s-\s", text.lower()):
+        words = re.findall(r"[a-z][a-z'\-]*", clause)
+        if words:
+            starts.append(words[:2])
+    return starts
+
+
+def find_cta(text: str) -> list:
+    lower = str(text or "").lower()
+    hits = {p for p in CTA_PHRASES if p in lower}
+    for words in _clause_starts(lower):
+        if words[0] in CTA_VERBS:
+            hits.add(words[0])
+    return sorted(hits)
+
+
+def find_urgency(text: str) -> list:
+    lower = str(text or "").lower()
+    return sorted({label for pattern, label in URGENCY_PATTERNS if re.search(pattern, lower)})
+
+
+# ── Feature analysis + explanations ─────────────────────────────────────
 def analyze_text_features(text: str) -> dict:
     cleaned = re.sub(r"\s+", " ", str(text or "")).strip()
     lower = cleaned.lower()
@@ -43,8 +99,8 @@ def analyze_text_features(text: str) -> dict:
         "has_question": "?" in cleaned,
         "positive_hits": sorted(token_set & POSITIVE_WORDS),
         "negative_hits": sorted(token_set & NEGATIVE_WORDS),
-        "cta_hits": sorted(token_set & CTA_WORDS),
-        "urgency_hits": sorted(token_set & URGENCY_WORDS),
+        "cta_hits": find_cta(cleaned),
+        "urgency_hits": find_urgency(cleaned),
     }
 
 
@@ -84,22 +140,22 @@ def predict_engagement(features: dict, result: dict) -> dict:
     """Rule-based (heuristic) engagement score, 0-100. Not a trained
     model - see README for why no validated text-engagement model exists
     yet. Always label this as "heuristic" in the UI."""
-    score = 50.0
+    score = 40.0
     reasons = []
     pos = result["scores"].get("positive", 0.0)
     neg = result["scores"].get("negative", 0.0)
     neu = result["scores"].get("neutral", 0.0)
 
-    score += (pos - neg) * 35
+    score += (pos - neg) * 20
     if features["cta_hits"]:
-        score += 12
+        score += 15
         reasons.append(f"Contains CTA words ({', '.join(features['cta_hits'][:3])}).")
     else:
         score -= 10
         reasons.append("Missing a clear call-to-action.")
 
     if features["urgency_hits"]:
-        score += 8
+        score += 10
         reasons.append(f"Includes urgency words ({', '.join(features['urgency_hits'][:3])}).")
     else:
         reasons.append("No urgency trigger detected.")
@@ -116,7 +172,7 @@ def predict_engagement(features: dict, result: dict) -> dict:
         reasons.append("Copy is long and may reduce attention.")
 
     if features["has_exclamation"]:
-        score += 4
+        score += 3
         reasons.append("Emotional punctuation can improve attention.")
     if neu > 0.55:
         score -= 8
@@ -139,6 +195,22 @@ def sentiment_prior_from_label(label: str) -> dict:
     return {"label": label if label in {"positive", "neutral", "negative"} else "neutral", "scores": scores}
 
 
+def compute_device_name() -> str:
+    """Where the models run: an NVIDIA GPU, else the Apple-silicon GPU (MPS),
+    else the CPU. Set FORCE_CPU=1 to compare."""
+    try:
+        import torch
+        if os.getenv("FORCE_CPU"):
+            return "cpu"
+        if torch.cuda.is_available():
+            return "cuda"
+        if getattr(torch.backends, "mps", None) and torch.backends.mps.is_available():
+            return "mps"
+    except Exception:  # noqa: BLE001
+        pass
+    return "cpu"
+
+
 class _Seq2SeqRewriter:
     """Minimal drop-in for `transformers.pipeline("text2text-generation", ...)`.
 
@@ -148,24 +220,25 @@ class _Seq2SeqRewriter:
     API is stable across transformers versions. Mimics the pipeline's
     call signature/output shape so the rest of the code doesn't change."""
 
-    def __init__(self, model_name: str, device: int):
+    def __init__(self, model_name: str, device: str):
         from transformers import AutoModelForSeq2SeqLM, AutoTokenizer
         self.tokenizer = AutoTokenizer.from_pretrained(model_name)
-        self.model = AutoModelForSeq2SeqLM.from_pretrained(model_name)
+        self.model = AutoModelForSeq2SeqLM.from_pretrained(model_name).to(device)
         self.device = device
-        if device >= 0:
-            self.model = self.model.to(f"cuda:{device}")
 
-    def __call__(self, prompt: str, max_new_tokens: int = 64, do_sample: bool = True,
-                 temperature: float = 0.9, top_p: float = 0.95, num_return_sequences: int = 1):
-        inputs = self.tokenizer(prompt, return_tensors="pt", truncation=True)
-        if self.device >= 0:
-            inputs = {k: v.to(f"cuda:{self.device}") for k, v in inputs.items()}
+    def generate_batch(self, prompts: list, max_new_tokens: int = 64, do_sample: bool = True,
+                       temperature: float = 0.9, top_p: float = 0.95, num_return_sequences: int = 1) -> list:
+        """One generate() call for several prompts -> one list of texts per prompt."""
+        inputs = self.tokenizer(prompts, return_tensors="pt", truncation=True, padding=True).to(self.device)
         outputs = self.model.generate(
             **inputs, max_new_tokens=max_new_tokens, do_sample=do_sample,
             temperature=temperature, top_p=top_p, num_return_sequences=num_return_sequences,
         )
-        return [{"generated_text": self.tokenizer.decode(o, skip_special_tokens=True)} for o in outputs]
+        texts = self.tokenizer.batch_decode(outputs, skip_special_tokens=True)
+        return [texts[i:i + num_return_sequences] for i in range(0, len(texts), num_return_sequences)]
+
+    def __call__(self, prompt: str, **kwargs):
+        return [{"generated_text": t} for t in self.generate_batch([prompt], **kwargs)[0]]
 
 
 
@@ -174,8 +247,7 @@ def load_local_rewriter():
     try:
         import torch
         model_name = os.getenv("LOCAL_REWRITE_MODEL", "google/flan-t5-base")
-        device = 0 if torch.cuda.is_available() else -1
-        return _Seq2SeqRewriter(model_name, device)
+        return _Seq2SeqRewriter(model_name, compute_device_name())
     except Exception:
         return None
 
@@ -248,8 +320,7 @@ def safe_template_rewrite(base_text: str, offer_details: str = "") -> str:
         return ""
     core = core[0].upper() + core[1:]
 
-    lowered = core.lower()
-    has_cta = any(re.search(rf"\b{w}\b", lowered) for w in CTA_WORDS)
+    has_cta = bool(find_cta(core))
     seed = sum(ord(c) for c in core) % 4
     neutral_ctas = ["Learn more", "Try it", "Find out more", "See how it works"]
 
@@ -302,11 +373,43 @@ def _refinement_result(base, text, before, prior, rejected, method):
     }
 
 
+def _rewrite_prompt(base: str, offer_details: str) -> str:
+    facts = f"Facts you may use: {offer_details}\n" if offer_details else (
+        "There is NO sale, discount, deadline or special offer. Do not mention one.\n")
+    return (
+        "Rewrite this ad copy to be clearer and more persuasive, with a call-to-action.\n"
+        "Do not add any prices, numbers, discounts, deadlines, guarantees or claims "
+        "that are not in the original or the facts below. Max 20 words.\n"
+        f"{facts}Original: {base}\nRewrite:"
+    )
+
+
+def _choose_rewrite(base: str, offer_details: str, prior: dict, before: float, generated: list) -> dict:
+    """Grounding-checks the model's candidates (plus a safe template) and keeps
+    the best-scoring one that invents nothing."""
+    candidates = build_candidate_pool(generated, base)
+    candidates.append(safe_template_rewrite(base, offer_details))
+    best_text, best_score, rejected = base, float("-inf"), []
+    for candidate in candidates:
+        unsupported = find_unsupported_claims(candidate, base, offer_details)
+        if unsupported:
+            rejected.append({"text": candidate, "unsupported": unsupported})
+            continue
+        score = predict_engagement(analyze_text_features(candidate), prior)["engagement_score"]
+        score += content_relevance_bonus(base, candidate)
+        if score > best_score:
+            best_score, best_text = score, candidate
+    return _refinement_result(base, best_text, before, prior, rejected, "language model + grounding check")
+
+
+def _clean(text) -> str:
+    return re.sub(r"\s+", " ", str(text or "")).strip()
+
+
 @lru_cache(maxsize=2048)
 def refine_low_engagement_copy(text: str, sentiment_label: str, engagement_score: float,
                                offer_details: str = "") -> dict:
-    base = re.sub(r"\s+", " ", str(text or "")).strip()
-    offer_details = re.sub(r"\s+", " ", str(offer_details or "")).strip()
+    base, offer_details = _clean(text), _clean(offer_details)
     prior = sentiment_prior_from_label(sentiment_label)
     if not base:
         return {"refined_text": "", "before_score": engagement_score, "after_score": engagement_score,
@@ -316,37 +419,65 @@ def refine_low_engagement_copy(text: str, sentiment_label: str, engagement_score
     if rewriter is None:
         return _refinement_result(base, safe_template_rewrite(base, offer_details), engagement_score,
                                   prior, [], "template (no language model loaded)")
-
-    facts = f"Facts you may use: {offer_details}\n" if offer_details else (
-        "There is NO sale, discount, deadline or special offer. Do not mention one.\n")
-    prompt = (
-        "Rewrite this ad copy to be clearer and more persuasive, with a call-to-action.\n"
-        "Do not add any prices, numbers, discounts, deadlines, guarantees or claims "
-        "that are not in the original or the facts below. Max 20 words.\n"
-        f"{facts}Original: {base}\nRewrite:"
-    )
     try:
-        generated = rewriter(prompt, max_new_tokens=64, do_sample=True, temperature=0.8,
-                             top_p=0.95, num_return_sequences=8)
-        candidates = build_candidate_pool([g.get("generated_text", "") for g in generated], base)
-        candidates.append(safe_template_rewrite(base, offer_details))
-
-        best_text, best_score, rejected = base, float("-inf"), []
-        for candidate in candidates:
-            unsupported = find_unsupported_claims(candidate, base, offer_details)
-            if unsupported:
-                rejected.append({"text": candidate, "unsupported": unsupported})
-                continue
-            score = predict_engagement(analyze_text_features(candidate), prior)["engagement_score"]
-            score += content_relevance_bonus(base, candidate)
-            if score > best_score:
-                best_score, best_text = score, candidate
-        return _refinement_result(base, best_text, engagement_score, prior, rejected,
-                                  "language model + grounding check")
+        generated = rewriter.generate_batch([_rewrite_prompt(base, offer_details)], max_new_tokens=64,
+                                            temperature=0.8, top_p=0.95, num_return_sequences=8)[0]
+        return _choose_rewrite(base, offer_details, prior, engagement_score, generated)
     except Exception:
         return _refinement_result(base, safe_template_rewrite(base, offer_details), engagement_score,
                                   prior, [], "template (language model failed)")
 
+
+def refine_batch(items: list, skip_above: float = 70.0, batch_size: int = 8, candidates: int = 6,
+                 progress=None) -> list:
+    """Bulk version of refine_low_engagement_copy for a whole CSV.
+
+    items: [(text, sentiment_label, engagement_score, offer_details), ...]
+    Faster than calling the single version per row because it
+      - leaves rows that already score >= skip_above as they are,
+      - rewrites each distinct (text, offer) pair once,
+      - generates candidates for `batch_size` rows in one model call
+        (on the GPU when there is one, see compute_device_name()).
+    The same grounding check applies to every candidate."""
+    results = [None] * len(items)
+    todo = {}
+    for i, (text, label, score, offer) in enumerate(items):
+        base, offer = _clean(text), _clean(offer)
+        if not base:
+            results[i] = {"refined_text": "", "before_score": score, "after_score": score, "score_change": 0.0,
+                          "rejected_candidates": [], "unsupported_claims": [], "method": "none"}
+        elif score >= skip_above:
+            results[i] = {"refined_text": base, "before_score": score, "after_score": score, "score_change": 0.0,
+                          "rejected_candidates": [], "unsupported_claims": [], "method": "kept - already scores well"}
+        else:
+            todo.setdefault((base, offer, label, score), []).append(i)
+    keys = list(todo)
+    rewriter = load_local_rewriter()
+    done = len(items) - sum(len(v) for v in todo.values())
+    if progress:
+        progress(done / max(1, len(items)))
+    for start in range(0, len(keys), batch_size):
+        chunk = keys[start:start + batch_size]
+        try:
+            if rewriter is None:
+                raise RuntimeError("no language model")
+            generated = rewriter.generate_batch([_rewrite_prompt(b, o) for b, o, _, _ in chunk], max_new_tokens=64,
+                                                temperature=0.8, top_p=0.95, num_return_sequences=candidates)
+        except Exception:  # noqa: BLE001 - fall back to the safe template for this chunk
+            generated = [None] * len(chunk)
+        for (base, offer, label, score), gen in zip(chunk, generated):
+            prior = sentiment_prior_from_label(label)
+            if gen is None:
+                result = _refinement_result(base, safe_template_rewrite(base, offer), score, prior, [],
+                                            "template (no language model)")
+            else:
+                result = _choose_rewrite(base, offer, prior, score, gen)
+            for i in todo[(base, offer, label, score)]:
+                results[i] = result
+                done += 1
+        if progress:
+            progress(done / max(1, len(items)))
+    return results
 
 
 def recommendation(label: str) -> str:
