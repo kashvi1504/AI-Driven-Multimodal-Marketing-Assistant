@@ -240,16 +240,79 @@ class _Seq2SeqRewriter:
     def __call__(self, prompt: str, **kwargs):
         return [{"generated_text": t} for t in self.generate_batch([prompt], **kwargs)[0]]
 
+    @staticmethod
+    def prompt(base: str, offer_details: str) -> str:
+        facts = f"Facts you may use: {offer_details}\n" if offer_details else (
+            "There is NO sale, discount, deadline or special offer. Do not mention one.\n")
+        return (
+            "Rewrite this ad copy to be clearer and more persuasive, with a call-to-action.\n"
+            "Do not add any prices, numbers, discounts, deadlines, guarantees or claims "
+            "that are not in the original or the facts below. Max 20 words.\n"
+            f"{facts}Original: {base}\nRewrite:"
+        )
+
+
+class _ChatRewriter(_Seq2SeqRewriter):
+    """Instruction-tuned chat model (default Qwen2.5-1.5B-Instruct). Small
+    seq2seq models like flan-t5-base mostly copied the ad back unchanged;
+    a chat model actually rewrites it. Same interface as _Seq2SeqRewriter."""
+
+    SYSTEM = (
+        "You are an expert advertising copywriter. Rewrite the ad so it is clear, specific and persuasive, "
+        "leads with the benefit to the customer, and ends with a short call to action such as \"Shop now\", "
+        "\"Order now\", \"Book now\" or \"Visit us\". Rules: keep the same product "
+        "and meaning; use ONLY the facts you are given - never invent prices, discounts, percentages, dates, "
+        "deadlines, guarantees, awards, free items, delivery or return policies, or new product features; "
+        "keep offer amounts and conditions exactly as given; "
+        "one or two short sentences, at most 25 words; "
+        "plain text with no hashtags, emojis or quotation marks. Reply with the rewritten ad only."
+    )
+
+    def __init__(self, model_name: str, device: str):
+        import torch
+        from transformers import AutoModelForCausalLM, AutoTokenizer
+        self.tokenizer = AutoTokenizer.from_pretrained(model_name, padding_side="left")
+        dtype = torch.float16 if device in ("mps", "cuda") else torch.float32
+        self.model = AutoModelForCausalLM.from_pretrained(model_name, dtype=dtype).to(device)
+        self.model.eval()
+        self.device = device
+
+    def generate_batch(self, prompts: list, max_new_tokens: int = 60, do_sample: bool = True,
+                       temperature: float = 0.9, top_p: float = 0.95, num_return_sequences: int = 1) -> list:
+        chats = [self.tokenizer.apply_chat_template(
+            [{"role": "system", "content": self.SYSTEM}, {"role": "user", "content": p}],
+            tokenize=False, add_generation_prompt=True) for p in prompts]
+        inputs = self.tokenizer(chats, return_tensors="pt", padding=True).to(self.device)
+        outputs = self.model.generate(
+            **inputs, max_new_tokens=max_new_tokens, do_sample=do_sample, temperature=temperature, top_p=top_p,
+            num_return_sequences=num_return_sequences, pad_token_id=self.tokenizer.pad_token_id or self.tokenizer.eos_token_id,
+        )
+        texts = self.tokenizer.batch_decode(outputs[:, inputs["input_ids"].shape[1]:], skip_special_tokens=True)
+        return [texts[i:i + num_return_sequences] for i in range(0, len(texts), num_return_sequences)]
+
+    @staticmethod
+    def prompt(base: str, offer_details: str) -> str:
+        facts = (f"Offer details you may use (the only ones that exist): {offer_details}" if offer_details else
+                 "Use only what the ad itself says.")
+        return f"Ad copy: {base}\n{facts}\nWrite one improved version of this ad."
+
 
 
 @lru_cache(maxsize=1)
 def load_local_rewriter():
-    try:
-        import torch
-        model_name = os.getenv("LOCAL_REWRITE_MODEL", "google/flan-t5-base")
-        return _Seq2SeqRewriter(model_name, compute_device_name())
-    except Exception:
-        return None
+    """The local rewriting model: LOCAL_REWRITE_MODEL (default Qwen2.5-1.5B-
+    Instruct), falling back to flan-t5-base if it can't be loaded."""
+    device = compute_device_name()
+    for model_name in dict.fromkeys([os.getenv("LOCAL_REWRITE_MODEL", "Qwen/Qwen2.5-1.5B-Instruct"),
+                                     "google/flan-t5-base"]):
+        try:
+            cls = _Seq2SeqRewriter if "t5" in model_name.lower() else _ChatRewriter
+            rewriter = cls(model_name, device)
+            rewriter.model_name = model_name
+            return rewriter
+        except Exception:  # noqa: BLE001 - try the next model
+            continue
+    return None
 
 
 
@@ -268,11 +331,18 @@ CLAIM_PHRASES = [
     "money back", "money-back", "proven", "clinically", "certified", "award",
     "award-winning", "best-selling", "bestselling", "#1", "number one", "no.1",
     "exclusive", "bonus", "deal", "coupon", "promo",
+    # invented promises a fluent model likes to add ("no fees, no questions asked")
+    "no fees", "no fee", "no hidden", "no questions asked", "risk-free", "risk free", "no risk", "lifetime",
+    "unlimited", "24/7", "instant", "instantly", "in minutes", "in seconds", "same-day", "same day",
+    "next-day", "next day", "best", "cheapest", "lowest price", "lowest prices", "fastest", "leading",
+    "top-rated", "top rated", "for any reason", "no commitment", "refund", "free returns", "free trial",
+    "forever", "top-quality", "top quality", "premium quality", "unparalleled", "unbeatable", "no deals",
+    "up to",  # "up to 30% off" is a different offer from "30% off"
 ]
 _NUMBER_RE = re.compile(r"[$₹€£]?\d[\d,.:]*\s?(%|percent|x|am|pm|hrs?|hours?|days?|mins?)?", re.I)
 _DATE_WORDS = {
     "monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday",
-    "tonight", "tomorrow", "weekend", "midnight",
+    "tonight", "tomorrow", "weekend", "midnight", "today", "noon",
     "january", "february", "march", "april", "may", "june", "july", "august",
     "september", "october", "november", "december",
 }
@@ -287,7 +357,8 @@ def extract_claims(text: str) -> set:
     percentages, date or deadline words, and promotional claim phrases."""
     t = _norm(text)
     claims = {m.group(0).strip().lower() for m in _NUMBER_RE.finditer(t) if m.group(0).strip()}
-    tokens = set(re.findall(r"[a-z#0-9.'-]+", t))
+    # strip sentence punctuation so "today." still matches "today"
+    tokens = {tok.strip(".'-") for tok in re.findall(r"[a-z#0-9.'-]+", t)}
     claims |= tokens & _DATE_WORDS
     for phrase in CLAIM_PHRASES:
         if " " in phrase or "-" in phrase or "#" in phrase or "." in phrase:
@@ -348,14 +419,23 @@ def build_candidate_pool(raw_candidates, base_text: str):
     candidate is kept as the model wrote it, then grounding-checked."""
     pool, seen = [], set()
     for text in raw_candidates:
-        cleaned = re.sub(r"\s+", " ", str(text or "")).strip().strip('"').strip("'").replace("\n", " ").strip()
-        cleaned = re.sub(r"[^\w\s,!?.'%$₹€£-]", "", cleaned)
+        raw = re.sub(r"\s+", " ", str(text or "")).strip()
+        # a long candidate ending mid-word was cut off by the token limit - truncating it would leave half a sentence
+        if raw and raw[-1].isalnum() and len(raw.split()) >= 18:
+            continue
+        cleaned = raw.strip('"').strip("'")
+        cleaned = re.sub(r"^(rewritten ad|rewritten copy|improved version|rewrite|ad copy|ad)\s*:\s*", "", cleaned, flags=re.I)
+        cleaned = re.sub(r"\s*[—–]\s*", " - ", cleaned)  # keep dashes as separators instead of gluing words
+        cleaned = re.sub(r"[^\w\s,!?.'%$₹€£-]", "", cleaned).strip().strip('"').strip("'")
+        cleaned = re.sub(r"\s+", " ", cleaned)
         if not cleaned:
             continue
         cleaned = cleaned[0].upper() + cleaned[1:]
         words = cleaned.split()
-        if len(words) > 25:
-            cleaned = " ".join(words[:25]).rstrip(",;:-") + "."
+        if len(words) > 30:
+            continue
+        if not re.search(r"[.!?]$", cleaned):
+            cleaned += "."  # it ended with an emoji, which was removed
         key = cleaned.lower()
         if key and key not in seen and key != base_text.lower() and len(words) >= 3:
             seen.add(key)
@@ -373,33 +453,33 @@ def _refinement_result(base, text, before, prior, rejected, method):
     }
 
 
-def _rewrite_prompt(base: str, offer_details: str) -> str:
-    facts = f"Facts you may use: {offer_details}\n" if offer_details else (
-        "There is NO sale, discount, deadline or special offer. Do not mention one.\n")
-    return (
-        "Rewrite this ad copy to be clearer and more persuasive, with a call-to-action.\n"
-        "Do not add any prices, numbers, discounts, deadlines, guarantees or claims "
-        "that are not in the original or the facts below. Max 20 words.\n"
-        f"{facts}Original: {base}\nRewrite:"
-    )
-
-
-def _choose_rewrite(base: str, offer_details: str, prior: dict, before: float, generated: list) -> dict:
-    """Grounding-checks the model's candidates (plus a safe template) and keeps
-    the best-scoring one that invents nothing."""
-    candidates = build_candidate_pool(generated, base)
-    candidates.append(safe_template_rewrite(base, offer_details))
-    best_text, best_score, rejected = base, float("-inf"), []
-    for candidate in candidates:
+def _choose_rewrite(base: str, offer_details: str, prior: dict, before: float, generated: list,
+                    method: str = "language model + grounding check") -> dict:
+    """Grounding-checks the model's candidates and keeps the best one that
+    invents nothing (adding a call to action if it lacks one). The safe
+    template - the original plus a call to action - is only the fallback for
+    when no candidate passes, since it would otherwise always win on keeping
+    every original word."""
+    rejected, best_text, best_score = [], None, float("-inf")
+    for candidate in build_candidate_pool(generated, base):
         unsupported = find_unsupported_claims(candidate, base, offer_details)
         if unsupported:
             rejected.append({"text": candidate, "unsupported": unsupported})
             continue
+        if not find_cta(candidate):
+            candidate = f"{candidate} Find out more!"  # a good sentence without a call to action is still worth keeping
         score = predict_engagement(analyze_text_features(candidate), prior)["engagement_score"]
         score += content_relevance_bonus(base, candidate)
         if score > best_score:
             best_score, best_text = score, candidate
-    return _refinement_result(base, best_text, before, prior, rejected, "language model + grounding check")
+    if best_text is None:
+        best_text, method = safe_template_rewrite(base, offer_details), "safe template (no generated rewrite passed the checks)"
+    return _refinement_result(base, best_text, before, prior, rejected, method)
+
+
+def _method_label(rewriter) -> str:
+    name = getattr(rewriter, "model_name", "language model").split("/")[-1]
+    return f"{name} + grounding check"
 
 
 def _clean(text) -> str:
@@ -420,15 +500,15 @@ def refine_low_engagement_copy(text: str, sentiment_label: str, engagement_score
         return _refinement_result(base, safe_template_rewrite(base, offer_details), engagement_score,
                                   prior, [], "template (no language model loaded)")
     try:
-        generated = rewriter.generate_batch([_rewrite_prompt(base, offer_details)], max_new_tokens=64,
-                                            temperature=0.8, top_p=0.95, num_return_sequences=8)[0]
-        return _choose_rewrite(base, offer_details, prior, engagement_score, generated)
+        generated = rewriter.generate_batch([rewriter.prompt(base, offer_details)], max_new_tokens=64,
+                                            temperature=0.7, top_p=0.9, num_return_sequences=8)[0]
+        return _choose_rewrite(base, offer_details, prior, engagement_score, generated, _method_label(rewriter))
     except Exception:
         return _refinement_result(base, safe_template_rewrite(base, offer_details), engagement_score,
                                   prior, [], "template (language model failed)")
 
 
-def refine_batch(items: list, skip_above: float = 70.0, batch_size: int = 8, candidates: int = 6,
+def refine_batch(items: list, skip_above: float = 70.0, batch_size: int = 16, candidates: int = 3,
                  progress=None) -> list:
     """Bulk version of refine_low_engagement_copy for a whole CSV.
 
@@ -461,8 +541,8 @@ def refine_batch(items: list, skip_above: float = 70.0, batch_size: int = 8, can
         try:
             if rewriter is None:
                 raise RuntimeError("no language model")
-            generated = rewriter.generate_batch([_rewrite_prompt(b, o) for b, o, _, _ in chunk], max_new_tokens=64,
-                                                temperature=0.8, top_p=0.95, num_return_sequences=candidates)
+            generated = rewriter.generate_batch([rewriter.prompt(b, o) for b, o, _, _ in chunk], max_new_tokens=64,
+                                                temperature=0.7, top_p=0.9, num_return_sequences=candidates)
         except Exception:  # noqa: BLE001 - fall back to the safe template for this chunk
             generated = [None] * len(chunk)
         for (base, offer, label, score), gen in zip(chunk, generated):
@@ -471,7 +551,7 @@ def refine_batch(items: list, skip_above: float = 70.0, batch_size: int = 8, can
                 result = _refinement_result(base, safe_template_rewrite(base, offer), score, prior, [],
                                             "template (no language model)")
             else:
-                result = _choose_rewrite(base, offer, prior, score, gen)
+                result = _choose_rewrite(base, offer, prior, score, gen, _method_label(rewriter))
             for i in todo[(base, offer, label, score)]:
                 results[i] = result
                 done += 1

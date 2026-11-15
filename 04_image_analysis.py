@@ -475,6 +475,8 @@ def score_image(image: Image.Image, clip_scorer: "ClipScorer | None" = None,
         checks.append({"name": "watermark", "score": 0.0, "status": "fail", "critical": True, "weight": 0,
                        "message": f"Stock-photo watermark found ({names}). This is an unlicensed preview - "
                                   "license the image or use your own before running the ad."})
+        # the all-clear line no longer holds; the watermark leads the list
+        reasons = [r for r in reasons if not r.startswith("Focus, exposure, contrast")]
         reasons.insert(0, checks[-1]["message"])
         if combined["score"] > WATERMARK_CAP:
             combined.update(score=WATERMARK_CAP, capped=True, cap=WATERMARK_CAP)
@@ -483,7 +485,8 @@ def score_image(image: Image.Image, clip_scorer: "ClipScorer | None" = None,
         checks.append({"name": "watermark", "score": 100.0, "status": "pass", "critical": True, "weight": 0,
                        "message": "No stock-photo watermark found."})
 
-    if combined["capped"] and cap_check != "watermark":
+    if combined["capped"]:
+        # the page shows this note in its own banner and lists the rest
         reasons.insert(0, f"Score capped at {combined['cap']:.0f} by the {cap_check} check - "
                           "a defect this serious can't be offset by strengths elsewhere.")
     ai_generated = detect_ai_generated(image, ai_detector, raw_bytes)

@@ -244,6 +244,17 @@ checkpoint, so downstream modules never hard-crash on a missing model.
 
 ## Ad copy rewriting — grounding check (anti-hallucination)
 
+**Model:** `Qwen/Qwen2.5-1.5B-Instruct`, a small instruction-tuned chat
+model that runs locally (on the Apple-silicon GPU when there is one), so
+ad copy never leaves the machine. It replaced `google/flan-t5-base`, which
+mostly copied the ad back unchanged, so nearly every "rewrite" was the
+safe template (`eval/rewrite_comparison.md` has the side-by-side numbers).
+`LOCAL_REWRITE_MODEL` picks another model; flan-t5-base is the automatic
+fallback if Qwen can't be loaded. The model writes 8 candidates (3 per row
+in Bulk Analysis, for speed); a candidate without a call to action gets a neutral one
+added, and the safe template is used only when no candidate passes the
+grounding check.
+
 The rewriter must not make claims the advertiser never made. Earlier
 versions told the model to add urgency ("today only", "limited time")
 and then force-appended "today only", "Try now!" and "Feel the
@@ -260,8 +271,12 @@ rewards exactly those words. Now:
 - Every generated candidate goes through `find_unsupported_claims()`.
   Any candidate containing a number, price, percentage, date or deadline
   word, or a promotional claim (`sale`, `% off`, `free`, `guaranteed`,
-  `#1`, `proven`…) that is not in the user's input is **rejected**. The
-  UI lists the rejected rewrites and the claims that were invented.
+  `#1`, `proven`…) that is not in the user's input is **rejected**. A
+  fluent model also likes to add promises that aren't prices or dates, so
+  phrases like "no fees", "no questions asked", "risk-free", "unlimited",
+  "24/7", "same-day", "best", "lowest price", "forever" and "up to" (which
+  turns "30% off" into a different offer) are checked too. The UI lists
+  the rejected rewrites and the claims that were invented.
 - The deterministic fallback (`safe_template_rewrite`) only restructures
   the user's own words and adds a neutral call-to-action ("Learn more").
 - "Uplift" is renamed to **"heuristic score change"**. It comes from the

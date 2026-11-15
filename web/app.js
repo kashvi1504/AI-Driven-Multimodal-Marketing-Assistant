@@ -271,6 +271,8 @@ function renderCopyResult(out, r, original) {
         <div class="score-block mt">${ring(e.engagement_score, { tier: e.engagement_label })}
           <div>${badge(TIER_TEXT[e.engagement_label], e.engagement_label)}
             <p class="kpi-sub">Rule-based: call-to-action, urgency, length, tone and punctuation. Not a trained engagement model.</p></div></div>
+        <p class="muted small" style="margin:14px 0 0">Scores your ad exactly as written. Offer details don't change this score - they only
+          tell the rewrite which real offers it may mention, so compare with the rewrite's score below.</p>
       </div>
     </div>
     <div class="grid grid-2 mt fade-in">
@@ -283,8 +285,8 @@ function renderCopyResult(out, r, original) {
         <button class="btn btn-secondary" id="copy-copy">${icon("clipboard")}Copy</button></div>
       <div class="quote mt">${esc(w.refined_text)}</div>
       <div class="metrics mt">
-        <div class="metric"><span>Before</span><b>${w.before_score.toFixed(0)} / 100</b></div>
-        <div class="metric"><span>After</span><b>${w.after_score.toFixed(0)} / 100</b></div>
+        <div class="metric"><span>Your ad</span><b>${w.before_score.toFixed(0)} / 100</b></div>
+        <div class="metric"><span>Rewrite</span><b>${w.after_score.toFixed(0)} / 100</b></div>
         <div class="metric"><span>Change</span><b class="delta ${w.score_change > 0 ? "up" : w.score_change < 0 ? "down" : ""}">${w.score_change >= 0 ? "+" : ""}${w.score_change.toFixed(0)}</b></div>
         <div class="metric"><span>Method</span><b style="font-size:.85rem">${esc(w.method)}</b></div>
       </div>
