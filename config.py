@@ -169,6 +169,31 @@ IMAGE_ENGAGEMENT = {
     "bootstrap_reps": 1000,
 }
 
+# ── Deployment (see deploy/DEPLOY.md) ─────────────────────────────────
+# All set through environment variables (or .env), so the same code runs
+# on a laptop and on a public server. Defaults suit a private laptop.
+def _env_flag(name: str, default: bool = False) -> bool:
+    return os.environ.get(name, str(default)).strip().lower() in {"1", "true", "yes", "on"}
+
+
+DEPLOY = {
+    # lite mode: no Stable Diffusion, small flan-t5 rewriter -> ~3-4 GB RAM instead of 8-16
+    "lite_mode": _env_flag("LITE_MODE"),
+    "generative_enabled": not (_env_flag("LITE_MODE") or _env_flag("DISABLE_GENERATIVE")),
+    # who may create an account: "open" (anyone), "invite" (needs INVITE_CODE), "closed"
+    "signup_mode": os.environ.get("SIGNUP_MODE", "open").strip().lower(),
+    "invite_code": os.environ.get("INVITE_CODE", ""),
+    # mark the login cookie HTTPS-only; also turned on automatically behind an HTTPS proxy
+    "cookie_secure": _env_flag("COOKIE_SECURE"),
+    # requests per user per minute for the analysis features (0 = no limit)
+    "rate_per_minute": int(os.environ.get("RATE_LIMIT_PER_MINUTE", 30)),
+    # login / sign-up attempts per IP address per minute (slows password guessing)
+    "auth_per_minute": int(os.environ.get("AUTH_LIMIT_PER_MINUTE", 10)),
+    # heavy jobs that may run at once across all users
+    "max_concurrent_generations": int(os.environ.get("MAX_CONCURRENT_GENERATIONS", 1)),
+    "max_concurrent_bulk_jobs": int(os.environ.get("MAX_CONCURRENT_BULK_JOBS", 2)),
+}
+
 # ── Influencer Check (influencer_check.py) ────────────────────────────
 # Engagement rate = (avg likes + avg comments) / followers. Instagram
 # engagement falls as accounts grow, so the expected level depends on size.

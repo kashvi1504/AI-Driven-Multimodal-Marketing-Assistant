@@ -1,0 +1,12 @@
+# kept out of the container image
+.git
+.venv
+__pycache__
+*.pyc
+.env
+data/
+models/
+results/
+*.pptx
+*.pdf
+.claude/

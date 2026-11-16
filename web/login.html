@@ -43,6 +43,10 @@
             <label class="field" for="email">Email</label>
             <input class="input" id="email" name="email" type="email" autocomplete="email" placeholder="you@company.com" required>
           </div>
+          <div class="form-row" id="invite-row" style="display:none">
+            <label class="field" for="invite">Invite code</label>
+            <input class="input" id="invite" name="invite" autocomplete="off" placeholder="Code from the site owner">
+          </div>
           <div class="form-row">
             <label class="field" for="password">Password</label>
             <div class="pw-wrap">
@@ -57,7 +61,7 @@
           <div class="auth-switch" id="switch"></div>
           <div class="auth-fine">
             <svg viewBox="0 0 24 24"><rect x="4" y="10" width="16" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>
-            Your account is stored only on this computer.
+            Your account is stored only on the server running this app.
           </div>
         </form>
       </div>
@@ -100,6 +104,7 @@
                 sw: 'Already have an account? <a href="#" data-go="login">Log in</a>', pw: "new-password" },
     };
     let mode = location.pathname === "/signup" || params.get("mode") === "signup" ? "signup" : "login";
+    let signupMode = "open";  // set by the server: open, invite or closed
 
     function setMode(m) {
       mode = m;
@@ -107,6 +112,7 @@
       $("#title").textContent = c.title; $("#subtitle").textContent = c.sub; $("#submit").textContent = c.btn;
       $("#switch").innerHTML = c.sw;
       $("#name-row").style.display = m === "signup" ? "" : "none";
+      $("#invite-row").style.display = m === "signup" && signupMode === "invite" ? "" : "none";
       $("#pw-hint").style.display = m === "signup" ? "" : "none";
       $("#password").autocomplete = c.pw;
       document.querySelectorAll(".seg button").forEach((b) => {
@@ -138,6 +144,7 @@
       e.preventDefault();
       const body = { email: $("#email").value.trim(), password: $("#password").value };
       if (mode === "signup") body.name = $("#name").value.trim();
+      if (mode === "signup" && signupMode === "invite") body.invite_code = $("#invite").value.trim();
       if (mode === "signup" && !body.name) return showError("Enter your name.");
       if (!body.email) return showError("Enter your email address.");
       if (!body.password) return showError("Enter your password.");
@@ -159,6 +166,19 @@
     });
 
     setMode(mode);
+    fetch("/api/status").then((r) => r.json()).then((st) => {
+      signupMode = st.signup_mode || "open";
+      if (signupMode === "closed") {
+        document.querySelector('.seg [data-mode="signup"]').style.display = "none";
+        document.querySelector(".seg").style.gridTemplateColumns = "1fr";
+        COPY.login.sw = "New accounts are created by the site owner.";
+        const wanted = mode;
+        setMode("login");  // setMode clears messages, so show the note after it
+        if (wanted === "signup") showError("Sign-ups are closed on this server.", "Ask the owner for an account.");
+      } else {
+        setMode(mode);
+      }
+    }).catch(() => {});
   </script>
 </body>
 </html>

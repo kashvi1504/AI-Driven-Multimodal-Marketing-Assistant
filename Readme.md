@@ -602,6 +602,17 @@ and status needs a session. The dashboard history is the last 60
 analyses per user. This protects a single-machine install; put it
 behind HTTPS and a proper user store before exposing it to the internet.
 
+## Deployment
+
+`deploy/DEPLOY.md` covers putting the app online: Hugging Face Spaces
+(free, recommended), a cloud server with Docker and Caddy for HTTPS, or
+your Mac with a Cloudflare Tunnel. The `Dockerfile` builds the app with its
+models pre-downloaded. On a public server, turn on the protections with
+environment variables: `SIGNUP_MODE=invite` + `INVITE_CODE` (or `closed`,
+adding people with `deploy/create_user.py`), per-user request limits,
+log-in attempt limits, HTTPS-only cookies behind a proxy, and
+`LITE_MODE=1` / `DISABLE_GENERATIVE=1` for machines without a GPU.
+
 ## Running tests/checks
 
 ```bash

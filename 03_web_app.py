@@ -23,6 +23,8 @@ Site:
 
 import argparse
 import base64
+import collections
+import hmac
 import importlib.util
 import io
 import os
@@ -42,7 +44,7 @@ from pydantic import BaseModel
 import auth
 import copy_analysis as ca
 import influencer_check as ic
-from config import BASE_DIR, BULK_MAX_ROWS, COPY_SENTIMENT_MODEL, IMAGE_ENGAGEMENT, MODEL_DIR
+from config import BASE_DIR, BULK_MAX_ROWS, COPY_SENTIMENT_MODEL, DEPLOY, IMAGE_ENGAGEMENT, MODEL_DIR
 
 WEB_DIR = os.path.join(BASE_DIR, "web")
 MAX_UPLOAD_MB = 25
@@ -234,14 +236,55 @@ async def no_cache_site_files(request, call_next):
 PUBLIC_API = ("/api/auth/", "/api/status")
 
 
+# ── Request limits (in memory, per server process) ─────────────────────
+# Sliding one-minute windows: analysis calls per user, and log-in / sign-up
+# attempts per IP address so passwords can't be guessed quickly.
+_hits: dict = collections.defaultdict(collections.deque)
+_hits_lock = threading.Lock()
+
+
+def _client_ip(request: Request) -> str:
+    forwarded = request.headers.get("x-forwarded-for", "")
+    return forwarded.split(",")[0].strip() or (request.client.host if request.client else "unknown")
+
+
+def _over_limit(key: str, limit: int, window: float = 60.0) -> float:
+    """Records one hit; returns seconds to wait if `key` is over `limit` per window, else 0."""
+    if limit <= 0:
+        return 0.0
+    now = time.time()
+    with _hits_lock:
+        q = _hits[key]
+        while q and now - q[0] > window:
+            q.popleft()
+        if len(q) >= limit:
+            return window - (now - q[0])
+        q.append(now)
+    return 0.0
+
+
+def _too_many(wait: float, what: str) -> JSONResponse:
+    return JSONResponse(status_code=429, headers={"Retry-After": str(int(wait) + 1)}, content={
+        "error": f"Too many {what} - please wait {int(wait) + 1} seconds.",
+        "hint": "This server limits how often each person can run analyses so it stays fast for everyone."})
+
+
 @app.middleware("http")
 async def require_login(request: Request, call_next):
     request.state.user_id = auth.read_session(request.cookies.get(auth.COOKIE_NAME))
     path = request.url.path
+    if path in ("/api/auth/login", "/api/auth/signup"):
+        wait = _over_limit(f"auth:{_client_ip(request)}", DEPLOY["auth_per_minute"])
+        if wait:
+            return _too_many(wait, "log-in attempts")
     if path.startswith("/api/") and not path.startswith(PUBLIC_API) and path != "/api/docs":
         if not request.state.user_id or auth.get_user(request.state.user_id) is None:
             return JSONResponse(status_code=401, content={"error": "Please log in to continue.",
                                                           "hint": "Your session has ended."})
+        if request.method == "POST":
+            wait = _over_limit(f"user:{request.state.user_id}", DEPLOY["rate_per_minute"])
+            if wait:
+                return _too_many(wait, "requests")
     return await call_next(request)
 
 
@@ -276,6 +319,8 @@ def status():
         "optional_deps": [{"module": m, "description": d, "available": importlib.util.find_spec(m) is not None}
                           for m, d in OPTIONAL_DEPS.items()],
         "style_presets": list(_image_analysis.STYLE_PRESETS),
+        "features": {"generative": DEPLOY["generative_enabled"], "lite_mode": DEPLOY["lite_mode"]},
+        "signup_mode": DEPLOY["signup_mode"],
     }
 
 
@@ -284,6 +329,7 @@ class SignupRequest(BaseModel):
     name: str
     email: str
     password: str
+    invite_code: str = ""
 
 
 class LoginRequest(BaseModel):
@@ -291,21 +337,33 @@ class LoginRequest(BaseModel):
     password: str
 
 
-def _logged_in(user: dict) -> JSONResponse:
+def _is_https(request: Request) -> bool:
+    # behind an HTTPS proxy (Hugging Face, Caddy, Cloudflare) the app itself sees plain HTTP
+    return DEPLOY["cookie_secure"] or request.url.scheme == "https" or \
+        request.headers.get("x-forwarded-proto", "").lower() == "https"
+
+
+def _logged_in(user: dict, request: Request) -> JSONResponse:
     response = JSONResponse({"user": user})
     response.set_cookie(auth.COOKIE_NAME, auth.make_session(user["id"]), max_age=auth.SESSION_SECONDS,
-                        httponly=True, samesite="lax", path="/")
+                        httponly=True, samesite="lax", path="/", secure=_is_https(request))
     return response
 
 
 @app.post("/api/auth/signup")
-def signup(req: SignupRequest):
-    return _logged_in(auth.create_user(req.name, req.email, req.password))
+def signup(req: SignupRequest, request: Request):
+    mode = DEPLOY["signup_mode"]
+    if mode == "closed":
+        raise FriendlyError("Sign-ups are closed on this server.", "Ask the owner for an account.", 403)
+    if mode == "invite" and not (DEPLOY["invite_code"] and
+                                 hmac.compare_digest(req.invite_code.strip(), DEPLOY["invite_code"])):
+        raise FriendlyError("That invite code isn't right.", "Ask the owner of this site for the code.", 403)
+    return _logged_in(auth.create_user(req.name, req.email, req.password), request)
 
 
 @app.post("/api/auth/login")
-def login(req: LoginRequest):
-    return _logged_in(auth.authenticate(req.email, req.password))
+def login(req: LoginRequest, request: Request):
+    return _logged_in(auth.authenticate(req.email, req.password), request)
 
 
 @app.post("/api/auth/logout")
@@ -459,6 +517,9 @@ async def start_bulk(request: Request, file: UploadFile = File(...), rewrite: bo
     # drop finished jobs older than an hour so memory doesn't grow forever
     for jid in [j for j, v in _jobs.items() if time.time() - v["created"] > 3600]:
         _jobs.pop(jid, None)
+    running = sum(1 for j in _jobs.values() if j["status"] == "running")
+    if running >= DEPLOY["max_concurrent_bulk_jobs"]:
+        raise FriendlyError("The server is busy with other bulk jobs.", "Try again in a minute.", 429)
     job_id = uuid.uuid4().hex
     _jobs[job_id] = {"status": "running", "progress": 0.0, "created": time.time(), "rows": len(df), "text_column": text_col}
     threading.Thread(target=_run_bulk, args=(job_id, df, text_col, rewrite, request.state.user_id, file.filename or "CSV"), daemon=True).start()
@@ -547,8 +608,18 @@ def website_audit(req: WebsiteRequest, request: Request):
 
 
 # ── Generative editing ───────────────────────────────────────────────────
+_generation_slots = threading.BoundedSemaphore(max(1, DEPLOY["max_concurrent_generations"]))
+
+
+def require_generative():
+    if not DEPLOY["generative_enabled"]:
+        raise FriendlyError("Generative editing is turned off on this server.",
+                            "It needs a GPU to run at a usable speed. Precise Editing and the Canvas Editor still work.", 503)
+
+
 @app.get("/api/generate/estimate")
 def generate_estimate(steps: int = 25):
+    require_generative()
     try:
         cuda = __import__("torch").cuda.is_available()
     except Exception:  # noqa: BLE001
@@ -559,10 +630,14 @@ def generate_estimate(steps: int = 25):
 @app.post("/api/generate")
 async def generate(request: Request, image: UploadFile = File(...), prompt: str = Form(...), strength: float = Form(0.55),
                    steps: int = Form(25), guidance: float = Form(7.5)):
+    require_generative()
     require_dep("diffusers", "diffusers accelerate")
     if not prompt.strip():
         raise FriendlyError("Describe the new style or scene first.")
+    steps, strength, guidance = int(min(max(steps, 1), 50)), min(max(strength, 0.05), 1.0), min(max(guidance, 1.0), 15.0)
     img = await read_image(image)
+    if not _generation_slots.acquire(blocking=False):
+        raise FriendlyError("Another image is being generated right now.", "Try again in a minute.", 429)
     try:
         editor = _cached_loader("sd")
         generated = editor.generate(img, prompt=prompt, strength=strength, guidance_scale=guidance,
@@ -574,6 +649,8 @@ async def generate(request: Request, image: UploadFile = File(...), prompt: str 
         raise FriendlyError("Image generation failed.",
                             "This can happen with no internet connection (first-time model download), low "
                             "memory, or an unsupported prompt. Try a shorter prompt or fewer steps.", 500) from e
+    finally:
+        _generation_slots.release()
     before, after = image_report(img)["score"], image_report(generated)["score"]
     _record(request, "generate", prompt, after, detail=f"{before:.0f} → {after:.0f}")
     return {"image": to_data_url(generated), "before": before, "after": after}
@@ -648,7 +725,7 @@ def main():
     import uvicorn
 
     ap = argparse.ArgumentParser(description="Run the Sentiment Studio web app.")
-    ap.add_argument("--host", default="127.0.0.1")
+    ap.add_argument("--host", default=os.environ.get("HOST", "127.0.0.1"))
     ap.add_argument("--port", type=int, default=int(os.environ.get("PORT", 8000)))
     args = ap.parse_args()
     print(f"\n  Sentiment Studio → http://{args.host}:{args.port}\n")

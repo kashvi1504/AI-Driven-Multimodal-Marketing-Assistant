@@ -1,0 +1,7 @@
+# HTTPS for a cloud server: Caddy gets and renews a free certificate for your
+# domain automatically and forwards traffic to the app. Replace the domain,
+# point its DNS A record at the server, then run Caddy with this file.
+ads.example.com {
+	encode gzip
+	reverse_proxy 127.0.0.1:8000
+}

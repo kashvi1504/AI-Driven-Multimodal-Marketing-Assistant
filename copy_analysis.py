@@ -303,7 +303,10 @@ def load_local_rewriter():
     """The local rewriting model: LOCAL_REWRITE_MODEL (default Qwen2.5-1.5B-
     Instruct), falling back to flan-t5-base if it can't be loaded."""
     device = compute_device_name()
-    for model_name in dict.fromkeys([os.getenv("LOCAL_REWRITE_MODEL", "Qwen/Qwen2.5-1.5B-Instruct"),
+    # lite mode (servers without much memory) defaults to the small flan-t5 model
+    default = "google/flan-t5-base" if os.getenv("LITE_MODE", "").lower() in {"1", "true", "yes", "on"} \
+        else "Qwen/Qwen2.5-1.5B-Instruct"
+    for model_name in dict.fromkeys([os.getenv("LOCAL_REWRITE_MODEL", default),
                                      "google/flan-t5-base"]):
         try:
             cls = _Seq2SeqRewriter if "t5" in model_name.lower() else _ChatRewriter

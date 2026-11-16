@@ -27,7 +27,10 @@ import uuid
 
 from config import DATA_DIR
 
-ACCOUNTS_DIR = os.path.join(DATA_DIR, "accounts")
+# ACCOUNTS_DIR can point at persistent storage on a server (e.g. /data/accounts
+# on a Hugging Face Space with persistent storage); a free Space's disk is
+# wiped on every restart.
+ACCOUNTS_DIR = os.environ.get("ACCOUNTS_DIR", os.path.join(DATA_DIR, "accounts"))
 USERS_FILE = os.path.join(ACCOUNTS_DIR, "users.json")
 ACTIVITY_FILE = os.path.join(ACCOUNTS_DIR, "activity.json")
 SECRET_FILE = os.path.join(ACCOUNTS_DIR, "secret.key")
@@ -69,7 +72,11 @@ def _write(path: str, data) -> None:
 
 
 def _secret() -> bytes:
+    """Key that signs session cookies: SESSION_SECRET if set (keeps people
+    logged in across server restarts), else a random key saved on disk."""
     global _secret_cache
+    if _secret_cache is None and os.environ.get("SESSION_SECRET"):
+        _secret_cache = hashlib.sha256(os.environ["SESSION_SECRET"].encode()).digest()
     if _secret_cache is None:
         with _lock:
             if not os.path.exists(SECRET_FILE):

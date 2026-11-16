@@ -826,7 +826,11 @@ function pageGenerate(view) {
       </div>
     </div>
     <div id="gen-out"></div>`;
-  if (!setupFeatureGate($("#gen-gate"), "diffusers", "Generative editing", "diffusers accelerate")) $("#gen-run").disabled = true;
+  if (STATUS.data?.features && !STATUS.data.features.generative) {
+    $("#gen-gate").innerHTML = `<div class="note note-warn">${icon("alert")}<div><b>Generative editing is turned off on this server.</b>
+      <div>It needs a GPU to run at a usable speed. Precise Editing and the Canvas Editor still work.</div></div></div>`;
+    $("#gen-run").disabled = true;
+  } else if (!setupFeatureGate($("#gen-gate"), "diffusers", "Generative editing", "diffusers accelerate")) $("#gen-run").disabled = true;
   $("#gen-drop").append(dropzone({
     accept: "image/png,image/jpeg,image/webp", title: st.file ? "Replace image" : "Upload an image", sub: "JPG, PNG or WebP", compact: true,
     onFile: (f) => { if (!isImage(f)) return toast("That doesn't look like an image."); if (st.url) URL.revokeObjectURL(st.url);
