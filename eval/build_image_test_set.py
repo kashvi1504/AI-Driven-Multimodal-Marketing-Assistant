@@ -16,10 +16,16 @@ each high-resolution one, so every image's correct verdict is known:
   ai           -> made by an image generator: flagged as likely AI
 
     python eval/build_image_test_set.py --sources ~/Downloads/eval_sources
+    python eval/build_image_test_set.py --heldout   # held-out set, see below
 
 --sources is a folder of your own clean images (none are committed); the
 script also uses Apple's sample pictures on a Mac when they exist, and the
 Stable Diffusion images in data/eval/ai_generated/ for the "ai" category.
+
+--heldout builds a separate set in data/eval/heldout_images/ from the Apple
+sample pictures the tuning set did NOT use (it takes every 4th one), with the
+same defects. The image thresholds were tuned on the main set only, so this
+set measures how well they carry over to unseen images.
 """
 import argparse
 import csv
@@ -37,6 +43,7 @@ from config import DATA_DIR  # noqa: E402
 
 EVAL_DIR = os.path.join(DATA_DIR, "eval")
 OUT = os.path.join(EVAL_DIR, "images")
+MANIFEST = "image_manifest.csv"
 APPLE = "/Library/User Pictures"
 FONT = "/System/Library/Fonts/Supplemental/Arial Bold.ttf"
 EXTS = (".jpg", ".jpeg", ".png", ".webp", ".heic")
@@ -138,7 +145,11 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--sources", help="folder of clean source images (not committed)")
     ap.add_argument("--realworld", help="folder of real ads to score as-is (no expected verdict)")
+    ap.add_argument("--heldout", action="store_true", help="build the held-out set from the unused Apple pictures")
     args = ap.parse_args()
+    global OUT, MANIFEST
+    if args.heldout:
+        OUT, MANIFEST = os.path.join(EVAL_DIR, "heldout_images"), "heldout_manifest.csv"
     if os.path.isdir(OUT):
         shutil.rmtree(OUT)
     os.makedirs(OUT)
@@ -150,27 +161,36 @@ def main():
         rows.append({"file": os.path.relpath(path, EVAL_DIR), "category": category, "source": source})
 
     sources = sorted(p for p in glob.glob(os.path.join(args.sources or "", "*")) if p.lower().endswith(EXTS)) if args.sources else []
-    apple = sorted(glob.glob(os.path.join(APPLE, "*", "*.heic")))[::4] if os.path.isdir(APPLE) else []
+    all_apple = sorted(glob.glob(os.path.join(APPLE, "*", "*.heic"))) if os.path.isdir(APPLE) else []
+    tuning = set(all_apple[::4])
+    if args.heldout:  # only pictures the tuning set never saw; no AI or real-world extras
+        sources, apple = [], [p for p in all_apple if p not in tuning]
+    else:
+        apple = all_apple[::4]
     for path in sources + apple:
         base = os.path.splitext(os.path.basename(path))[0].replace(" ", "_")[:40]
         img = fit(load(path))
         if min(img.size) < 700:
             save(img, f"{base}__clean.jpg", "clean_lowres", path)
+            if not args.heldout:  # the held-out pictures are all small, so they get defects too
+                continue
+            for kind, v in variants(img):
+                save(v, f"{base}__{kind}.jpg", kind, path)
             continue
         save(img, f"{base}__clean.jpg", "clean", path)
         for kind, v in variants(img):
             save(v, f"{base}__{kind}.jpg", kind, path)
-    for path in sorted(glob.glob(os.path.join(EVAL_DIR, "ai_generated", "*"))):
+    for path in [] if args.heldout else sorted(glob.glob(os.path.join(EVAL_DIR, "ai_generated", "*"))):
         if path.lower().endswith(EXTS):
             shutil.copy(path, os.path.join(OUT, "ai__" + os.path.basename(path)))
-            rows.append({"file": os.path.join("images", "ai__" + os.path.basename(path)), "category": "ai", "source": path})
+            rows.append({"file": os.path.join(os.path.basename(OUT), "ai__" + os.path.basename(path)), "category": "ai", "source": path})
 
     for path in sorted(glob.glob(os.path.join(args.realworld or "", "*"))) if args.realworld else []:
         if path.lower().endswith(EXTS):
             name = os.path.splitext(os.path.basename(path))[0].replace(" ", "_")[:40]
             save(fit(load(path)), f"real__{name}.jpg", "realworld", path)
 
-    with open(os.path.join(EVAL_DIR, "image_manifest.csv"), "w", newline="") as f:
+    with open(os.path.join(EVAL_DIR, MANIFEST), "w", newline="") as f:
         w = csv.DictWriter(f, fieldnames=["file", "category", "source"])
         w.writeheader()
         w.writerows(rows)

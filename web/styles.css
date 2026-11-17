@@ -1,4 +1,4 @@
-/* Sentiment Studio app - layout + components. Tokens, buttons, inputs, notes
+/* AdLens app - layout + components. Tokens, buttons, inputs, notes
    and toasts live in theme.css (shared with the landing and login pages). */
 :root { --sidebar-w: 268px; }
 html, body { height: 100%; }

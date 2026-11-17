@@ -7,6 +7,8 @@ writes eval/results.md (+ eval/results.json).
     python eval/evaluate.py                 # held-out "test" split (the honest number)
     python eval/evaluate.py --split dev     # the split used while tuning
     python eval/evaluate.py --skip-images   # copy only
+    python eval/evaluate.py --heldout       # images the thresholds were never tuned on
+                                            # -> eval/results_heldout.md
 
 Copy:   eval/copy_test_set.csv  (build: python eval/build_copy_test_set.py)
 Images: data/eval/image_manifest.csv (build: python eval/build_image_test_set.py)
@@ -86,8 +88,8 @@ EXPECT = {  # category -> (rule, description)
 }
 
 
-def evaluate_images():
-    manifest = pd.read_csv(os.path.join(EVAL_DATA, "image_manifest.csv"))
+def evaluate_images(manifest_name="image_manifest.csv"):
+    manifest = pd.read_csv(os.path.join(EVAL_DATA, manifest_name))
     ia = load("image_analysis", "04_image_analysis.py")
     clip = ia.ClipScorer()
     try:
@@ -142,8 +144,8 @@ def pct(x):
     return f"{100 * x:.0f}%"
 
 
-def write_report(res):
-    L = ["# Evaluation results", "", f"Generated {time.strftime('%Y-%m-%d %H:%M')} by `python eval/evaluate.py`.", ""]
+def write_report(res, name="results", command="python eval/evaluate.py"):
+    L = ["# Evaluation results", "", f"Generated {time.strftime('%Y-%m-%d %H:%M')} by `{command}`.", ""]
     c = res.get("copy")
     if c:
         L += [f"## Ad copy sentiment ({c['rows']} hand-labelled ads, `{c['split']}` split)", "",
@@ -167,7 +169,7 @@ def write_report(res):
             L.append("")
     im = res.get("images")
     if im:
-        L += [f"## Images ({im['images']} images)", "",
+        L += [f"## {res.get('image_title', 'Images')} ({im['images']} images)", "",
               f"Expected-verdict pass rate: **{pct(im['quality_pass_rate'])}** · "
               f"{im['seconds_per_image']:.2f} s per image", "",
               "| Category | Images | Expected | Passed | Mean score | Range |", "|---|---|---|---|---|---|"]
@@ -186,9 +188,9 @@ def write_report(res):
             L += ["", "Real ads scored as-is: " + "; ".join(f"{r['file']} {r['score']:.0f} ({r['label']})" for r in im["realworld"])]
         if im["failures"]:
             L += ["", "Failures: " + "; ".join(f"{f['file']} ({f['category']}, {f['score']:.0f})" for f in im["failures"])]
-    with open(os.path.join(HERE, "results.md"), "w") as f:
+    with open(os.path.join(HERE, name + ".md"), "w") as f:
         f.write("\n".join(L) + "\n")
-    with open(os.path.join(HERE, "results.json"), "w") as f:
+    with open(os.path.join(HERE, name + ".json"), "w") as f:
         json.dump(res, f, indent=1, default=float)
     print("\n".join(L))
 
@@ -198,7 +200,14 @@ def main():
     ap.add_argument("--split", default="test", choices=["dev", "test", "all"])
     ap.add_argument("--skip-images", action="store_true")
     ap.add_argument("--skip-copy", action="store_true")
+    ap.add_argument("--heldout", action="store_true",
+                    help="score data/eval/heldout_manifest.csv (build: build_image_test_set.py --heldout)")
     args = ap.parse_args()
+    if args.heldout:
+        res = {"image_title": "Held-out images (thresholds never tuned on these)",
+               "images": evaluate_images("heldout_manifest.csv")}
+        write_report(res, "results_heldout", "python eval/evaluate.py --heldout")
+        return
     res = {}
     if not args.skip_copy:
         res["copy"] = evaluate_copy(args.split)

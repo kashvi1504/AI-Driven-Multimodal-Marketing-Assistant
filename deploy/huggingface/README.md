@@ -1,5 +1,5 @@
 ---
-title: Sentiment Studio
+title: AdLens
 emoji: 📣
 colorFrom: indigo
 colorTo: pink
@@ -9,7 +9,7 @@ pinned: false
 short_description: Check ad copy, creatives and influencers before launch
 ---
 
-# Sentiment Studio
+# AdLens
 
 AI-assisted analysis for marketing: ad copy tone and engagement with grounded
 rewrites, image quality with watermark and AI-generation checks, campaign CSVs,

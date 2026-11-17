@@ -1,4 +1,4 @@
-# Deploying Sentiment Studio
+# Deploying AdLens
 
 Three ways to put the app online, from easiest to most flexible. All of them
 use the same code; behaviour is set with environment variables (below).
@@ -36,7 +36,7 @@ is git-ignored and in `.dockerignore`, so secrets never reach GitHub or the imag
 ## A. Hugging Face Spaces
 
 1. Create a free account at https://huggingface.co.
-2. **New Space** -> name it (e.g. `sentiment-studio`) -> SDK **Docker** -> template **Blank** ->
+2. **New Space** -> name it (e.g. `adlens`) -> SDK **Docker** -> template **Blank** ->
    hardware **CPU basic** (free) -> visibility Public or Private -> **Create Space**.
 3. In the Space: **Settings -> Variables and secrets**, add as **Secrets**:
    - `INVITE_CODE` - the code you'll give your panel and friends
@@ -45,12 +45,12 @@ is git-ignored and in `.dockerignore`, so secrets never reach GitHub or the imag
 4. **Settings -> Access Tokens** on your profile -> create a token with **write** access.
 5. From the project folder on your Mac (after committing your changes):
    ```bash
-   ./deploy/push_to_hf_space.sh <your-hf-username>/sentiment-studio
+   ./deploy/push_to_hf_space.sh <your-hf-username>/adlens
    ```
    Git asks for a username (your Hugging Face name) and password (the token).
 6. The Space builds the image and downloads the models - expect 20-40 minutes the
    first time. When it says **Running**, the app is at
-   `https://<your-hf-username>-sentiment-studio.hf.space`.
+   `https://<your-hf-username>-adlens.hf.space`.
 7. Sign up there with your invite code.
 
 Good to know:
@@ -79,11 +79,11 @@ Student credits: GitHub Student Developer Pack, Azure for Students.
    ```
 3. Build and run (the app listens only on the server itself; Caddy faces the internet):
    ```bash
-   docker build -t sentiment-studio .
-   docker run -d --name sentiment-studio --restart unless-stopped \
+   docker build -t adlens .
+   docker run -d --name adlens --restart unless-stopped \
      -p 127.0.0.1:8000:7860 --env-file .env \
      -e ACCOUNTS_DIR=/home/user/app/data/accounts -v ss-data:/home/user/app/data \
-     sentiment-studio
+     adlens
    ```
    With an NVIDIA GPU: build with `--build-arg TORCH_INDEX=https://download.pytorch.org/whl/cu121`,
    run with `--gpus all`, and add `DISABLE_GENERATIVE=0` to `.env`.

@@ -1,4 +1,4 @@
-/* Sentiment Studio - shared design tokens (light + dark) and base components.
+/* AdLens - shared design tokens (light + dark) and base components.
    Loaded by every page: landing, login and the app. */
 :root {
   --bg: #F7F7FB;

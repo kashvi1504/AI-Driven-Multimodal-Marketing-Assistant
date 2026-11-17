@@ -1,4 +1,4 @@
-/* Sentiment Studio front end - vanilla JS, no build step.
+/* AdLens front end - vanilla JS, no build step.
    Talks to the FastAPI backend in 03_web_app.py (all endpoints under /api). */
 "use strict";
 
@@ -1306,7 +1306,7 @@ const ROUTER = {
     $$("#nav a").forEach((a) => a.classList.toggle("active", a.dataset.id === page.id));
     $("#crumb").textContent = page.group;
     $("#page-title").textContent = page.title;
-    document.title = `${page.title} · Sentiment Studio`;
+    document.title = `${page.title} · AdLens`;
     CANVAS_KEYS.undo = null;
     const view = $("#view");
     view.innerHTML = "";

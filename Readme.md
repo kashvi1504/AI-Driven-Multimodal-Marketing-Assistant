@@ -1,4 +1,4 @@
-# Sentiment Studio — Marketing AI toolkit
+# AdLens: An AI Driven Multimodal Marketing Assistant
 
 A small pipeline that fine-tunes a real sentiment classifier on marketing
 text, plus a local web app (FastAPI backend + a hand-built HTML/CSS/JS
@@ -568,7 +568,7 @@ engagement scores.
 ## Web app pages
 
 **Public site**
-- **Home** (`/`) — what Sentiment Studio does, the eight tools, how it works, why it's trustworthy, and a FAQ.
+- **Home** (`/`) — what AdLens does, the eight tools, how it works, why it's trustworthy, and a FAQ.
 - **Log in / Sign up** (`/login`, `/signup`) — local accounts (see below).
 
 **Overview**

@@ -5,7 +5,7 @@ Creates an account from the command line - the way to add people when
 SIGNUP_MODE=closed. Run it on the server, inside the container if Docker:
 
     python deploy/create_user.py "Dr. A. Deshmukh" mentor@example.com
-    docker exec -it sentiment-studio python deploy/create_user.py "Name" email@example.com
+    docker exec -it adlens python deploy/create_user.py "Name" email@example.com
 
 It asks for the password without showing it. Uses ACCOUNTS_DIR like the app.
 """

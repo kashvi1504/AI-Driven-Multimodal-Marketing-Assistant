@@ -1,0 +1,179 @@
+{
+ "image_title": "Held-out images (thresholds never tuned on these)",
+ "images": {
+  "images": 288,
+  "seconds_per_image": 1.1570698155297174,
+  "watermark_feature": true,
+  "ai_feature": true,
+  "by_category": {
+   "blur": {
+    "n": 32,
+    "mean_score": 31.3,
+    "min": 30.0,
+    "max": 52.3,
+    "expected": "Needs work (< 45)",
+    "passed": 30
+   },
+   "bright": {
+    "n": 32,
+    "mean_score": 45.0,
+    "min": 30.0,
+    "max": 84.6,
+    "expected": "Needs work (< 45)",
+    "passed": 20
+   },
+   "clean_lowres": {
+    "n": 32,
+    "mean_score": 77.9,
+    "min": 30.0,
+    "max": 84.6,
+    "expected": "at least Fair (>= 45)",
+    "passed": 31
+   },
+   "dark": {
+    "n": 32,
+    "mean_score": 30.0,
+    "min": 30.0,
+    "max": 30.0,
+    "expected": "Needs work (< 45)",
+    "passed": 32
+   },
+   "noise": {
+    "n": 32,
+    "mean_score": 44.5,
+    "min": 30.0,
+    "max": 45.0,
+    "expected": "not Good (< 70)",
+    "passed": 32
+   },
+   "tiny": {
+    "n": 32,
+    "mean_score": 30.0,
+    "min": 30.0,
+    "max": 30.0,
+    "expected": "Needs work (< 45)",
+    "passed": 32
+   },
+   "wm_center": {
+    "n": 32,
+    "mean_score": 39.7,
+    "min": 30.0,
+    "max": 40.0,
+    "expected": "watermark flagged, < 70",
+    "passed": 32
+   },
+   "wm_corner": {
+    "n": 32,
+    "mean_score": 41.1,
+    "min": 30.0,
+    "max": 84.6,
+    "expected": "watermark flagged, < 70",
+    "passed": 31
+   },
+   "wm_tiled": {
+    "n": 32,
+    "mean_score": 39.7,
+    "min": 30.0,
+    "max": 40.0,
+    "expected": "watermark flagged, < 70",
+    "passed": 32
+   }
+  },
+  "quality_pass_rate": 0.9444444444444444,
+  "realworld": [],
+  "ai_detection": {
+   "ai_images": 0,
+   "ai_flagged": 0,
+   "real_images": 32,
+   "real_flagged": 4
+  },
+  "watermark_detection": {
+   "watermarked": 96,
+   "flagged": 95,
+   "unwatermarked": 192,
+   "false_flags": 0
+  },
+  "failures": [
+   {
+    "file": "Flower__bright.jpg",
+    "category": "bright",
+    "score": 59.5
+   },
+   {
+    "file": "Poppy__bright.jpg",
+    "category": "bright",
+    "score": 68.5
+   },
+   {
+    "file": "Red_Rose__bright.jpg",
+    "category": "bright",
+    "score": 84.6
+   },
+   {
+    "file": "Sunflower__blur.jpg",
+    "category": "blur",
+    "score": 52.3
+   },
+   {
+    "file": "Sunflower__bright.jpg",
+    "category": "bright",
+    "score": 84.6
+   },
+   {
+    "file": "Yellow_Daisy__bright.jpg",
+    "category": "bright",
+    "score": 84.6
+   },
+   {
+    "file": "Chalk__bright.jpg",
+    "category": "bright",
+    "score": 45.2
+   },
+   {
+    "file": "Smack__clean.jpg",
+    "category": "clean_lowres",
+    "score": 30.0
+   },
+   {
+    "file": "Guitar__bright.jpg",
+    "category": "bright",
+    "score": 74.8
+   },
+   {
+    "file": "Turntable__blur.jpg",
+    "category": "blur",
+    "score": 47.7
+   },
+   {
+    "file": "Leaf__bright.jpg",
+    "category": "bright",
+    "score": 55.7
+   },
+   {
+    "file": "Sandollar__wm_corner.jpg",
+    "category": "wm_corner",
+    "score": 84.6
+   },
+   {
+    "file": "8ball__bright.jpg",
+    "category": "bright",
+    "score": 74.7
+   },
+   {
+    "file": "Basketball__bright.jpg",
+    "category": "bright",
+    "score": 84.6
+   },
+   {
+    "file": "Football__bright.jpg",
+    "category": "bright",
+    "score": 45.0
+   },
+   {
+    "file": "Tennis__bright.jpg",
+    "category": "bright",
+    "score": 78.3
+   }
+  ]
+ }
+}

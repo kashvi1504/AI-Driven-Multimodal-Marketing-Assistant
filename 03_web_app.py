@@ -1,7 +1,7 @@
 """
 03_web_app.py
 -------------
-Sentiment Studio web app: a FastAPI backend serving the site in web/.
+AdLens web app: a FastAPI backend serving the site in web/.
 
     python 03_web_app.py                 # then open http://127.0.0.1:8000
     python 03_web_app.py --port 8080     # another port
@@ -219,7 +219,7 @@ async def lifespan(_):
     yield
 
 
-app = FastAPI(title="Sentiment Studio", docs_url="/api/docs", redoc_url=None, lifespan=lifespan)
+app = FastAPI(title="AdLens", docs_url="/api/docs", redoc_url=None, lifespan=lifespan)
 
 
 @app.middleware("http")
@@ -724,11 +724,11 @@ app.mount("/static", StaticFiles(directory=WEB_DIR), name="static")
 def main():
     import uvicorn
 
-    ap = argparse.ArgumentParser(description="Run the Sentiment Studio web app.")
+    ap = argparse.ArgumentParser(description="Run the AdLens web app.")
     ap.add_argument("--host", default=os.environ.get("HOST", "127.0.0.1"))
     ap.add_argument("--port", type=int, default=int(os.environ.get("PORT", 8000)))
     args = ap.parse_args()
-    print(f"\n  Sentiment Studio → http://{args.host}:{args.port}\n")
+    print(f"\n  AdLens → http://{args.host}:{args.port}\n")
     uvicorn.run(app, host=args.host, port=args.port, log_level="warning")
 
 

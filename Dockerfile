@@ -1,8 +1,8 @@
-# Sentiment Studio - container for Hugging Face Spaces or any Docker host.
+# AdLens - container for Hugging Face Spaces or any Docker host.
 # Full guide: deploy/DEPLOY.md
 #
-#   docker build -t sentiment-studio .
-#   docker run -p 8000:7860 --env-file .env sentiment-studio
+#   docker build -t adlens .
+#   docker run -p 8000:7860 --env-file .env adlens
 #
 # Build options (docker build --build-arg NAME=value):
 #   PRELOAD_MODELS=1      download the models during the build, so the first visitor doesn't wait
