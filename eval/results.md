@@ -1,6 +1,6 @@
 # Evaluation results
 
-Generated 2026-11-12 22:29 by `python eval/evaluate.py`.
+Generated 2026-11-17 17:08 by `python eval/evaluate.py`.
 
 ## Ad copy sentiment (90 hand-labelled ads, `test` split)
 
@@ -40,7 +40,7 @@ Ads the app default still gets wrong:
 
 ## Images (128 images)
 
-Expected-verdict pass rate: **96%** · 5.74 s per image
+Expected-verdict pass rate: **96%** · 5.53 s per image
 
 | Category | Images | Expected | Passed | Mean score | Range |
 |---|---|---|---|---|---|

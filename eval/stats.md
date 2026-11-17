@@ -1,6 +1,6 @@
 # Statistics: confidence intervals and significance
 
-Generated 2026-11-17 15:50 by `python eval/stats.py`. 95% intervals: bootstrap (10,000 resamples of the ads, seed 0) for copy, Wilson for image rates.
+Generated 2026-11-17 17:40 by `python eval/stats.py`. 95% intervals: bootstrap (10,000 resamples of the ads, seed 0) for copy, Wilson for image rates.
 
 ## Ad copy sentiment, held-out test half (90 ads)
 
@@ -83,9 +83,9 @@ Exact McNemar tests (ads where only one model is right):
 | noise | 32 / 32 | 100.0% [89.3, 100.0] |
 | tiny | 32 / 32 | 100.0% [89.3, 100.0] |
 | wm_center | 32 / 32 | 100.0% [89.3, 100.0] |
-| wm_corner | 31 / 32 | 96.9% [84.3, 99.4] |
+| wm_corner | 32 / 32 | 100.0% [89.3, 100.0] |
 | wm_tiled | 32 / 32 | 100.0% [89.3, 100.0] |
-| ALL | 272 / 288 | 94.4% [91.2, 96.6] |
-| watermark recall | 95 / 96 | 99.0% [94.3, 99.8] |
+| ALL | 273 / 288 | 94.8% [91.6, 96.8] |
+| watermark recall | 96 / 96 | 100.0% [96.2, 100.0] |
 | watermark false alarms | 0 / 192 | 0.0% [0.0, 2.0] |
 | AI false alarms | 4 / 32 | 12.5% [5.0, 28.1] |

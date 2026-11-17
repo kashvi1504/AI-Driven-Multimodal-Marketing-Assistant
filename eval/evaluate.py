@@ -144,7 +144,7 @@ def pct(x):
     return f"{100 * x:.0f}%"
 
 
-def write_report(res, name="results", command="python eval/evaluate.py"):
+def write_report(res, out_name="results", command="python eval/evaluate.py"):
     L = ["# Evaluation results", "", f"Generated {time.strftime('%Y-%m-%d %H:%M')} by `{command}`.", ""]
     c = res.get("copy")
     if c:
@@ -188,9 +188,9 @@ def write_report(res, name="results", command="python eval/evaluate.py"):
             L += ["", "Real ads scored as-is: " + "; ".join(f"{r['file']} {r['score']:.0f} ({r['label']})" for r in im["realworld"])]
         if im["failures"]:
             L += ["", "Failures: " + "; ".join(f"{f['file']} ({f['category']}, {f['score']:.0f})" for f in im["failures"])]
-    with open(os.path.join(HERE, name + ".md"), "w") as f:
+    with open(os.path.join(HERE, out_name + ".md"), "w") as f:
         f.write("\n".join(L) + "\n")
-    with open(os.path.join(HERE, name + ".json"), "w") as f:
+    with open(os.path.join(HERE, out_name + ".json"), "w") as f:
         json.dump(res, f, indent=1, default=float)
     print("\n".join(L))
 

@@ -39,6 +39,8 @@ Treat the output as a quality check with explanations, not a prediction
 of real engagement.
 """
 
+import re
+
 import numpy as np
 from PIL import Image, ImageEnhance, ImageFilter, ImageOps, ImageStat
 from scipy.ndimage import convolve, gaussian_filter, sobel, uniform_filter1d
@@ -303,7 +305,9 @@ def score_visual_features(features: dict) -> dict:
 # stamp their name across preview images. A watermarked image can't be run
 # as an ad (it's an unlicensed preview), so it caps the score like a defect.
 STOCK_WATERMARKS = (
-    "shutterstock", "getty images", "gettyimages", "istock", "adobe stock", "alamy", "dreamstime",
+    # "getty" on its own catches OCR misreads of the faint Getty overlay ("gettyin ge");
+    # names of 6 letters or fewer must match exactly (see _fuzzy_has)
+    "shutterstock", "getty images", "gettyimages", "getty", "istock", "adobe stock", "alamy", "dreamstime",
     "depositphotos", "123rf", "freepik", "vecteezy", "pond5", "bigstock", "canstock", "stock photo",
     "watermark", "preview only",
 )
@@ -368,23 +372,39 @@ AI_THRESHOLD = 0.5
 AI_UNSURE = 0.3
 
 
+# IPTC "digital source type" values that only a generator writes
+AI_SOURCE_TYPES = ("compositewithtrainedalgorithmicmedia", "trainedalgorithmicmedia")
+# Fields where a tool names itself. Free text (captions, titles, keywords, descriptions)
+# is deliberately NOT searched: a news photo *about* OpenAI says "OpenAI" in its caption.
+_GENERATOR_FIELDS = re.compile(
+    r"(?:claim_generator(?:_info)?|xmp:creatortool|creatortool|softwareagent|stevt:softwareagent|"
+    r"\"name\"|tiff:software|photoshop:software)[^a-z0-9]{0,12}([^\"<\x00\r\n]{1,120})", re.I)
+
+
 def ai_metadata_signals(image: Image.Image, raw_bytes: "bytes | None" = None) -> list:
     found = []
     info_keys = {str(k).lower() for k in image.info}
     if info_keys & {"parameters", "prompt", "workflow", "sd-metadata", "dream"}:
         found.append("image generator settings embedded in the file")
-    blobs = [str(v) for v in image.info.values() if isinstance(v, str)]
-    blobs += [v.decode("latin-1", "ignore") for v in image.info.values() if isinstance(v, bytes)]
+    tool_text = []
+    for key in ("software", "Software"):  # PNG text chunk
+        if isinstance(image.info.get(key), str):
+            tool_text.append(image.info[key])
     try:
-        exif = image.getexif()
-        blobs += [str(exif.get(tag, "")) for tag in (0x0131, 0x010E, 0x013B, 0x9286)]
+        tool_text.append(str(image.getexif().get(0x0131, "")))  # EXIF Software tag
     except Exception:  # noqa: BLE001
         pass
-    if raw_bytes:
-        # Content Credentials (C2PA) and IPTC "digital source type" live in raw segments
-        blobs.append(raw_bytes[:4_000_000].decode("latin-1", "ignore"))
-    text = " ".join(blobs).lower()
+    raw = raw_bytes[:4_000_000].decode("latin-1", "ignore").lower() if raw_bytes else ""
+    for source_type in AI_SOURCE_TYPES:
+        if source_type in raw:
+            found.append(f"file metadata mentions \"{source_type}\"")
+            break
+    if raw and ("c2pa" in raw or "xmp" in raw):
+        tool_text += [m.group(1) for m in _GENERATOR_FIELDS.finditer(raw)]
+    text = " ".join(tool_text).lower()
     for hint in AI_METADATA_HINTS:
+        if hint in AI_SOURCE_TYPES:
+            continue
         if hint in text:
             found.append(f"file metadata mentions \"{hint}\"")
     return sorted(set(found))

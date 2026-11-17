@@ -23,7 +23,7 @@
       18
      ]
     ],
-    "seconds": 0.29552268981933594,
+    "seconds": 0.6663761138916016,
     "wrong": [
      {
       "text": "\ud83d\udd25 BIG NEWS! Your favourites just got better! Get 30% OFF our entire collection! Limited-time offer, only until Sunday!",
@@ -152,7 +152,7 @@
       29
      ]
     ],
-    "seconds": 0.3761711120605469,
+    "seconds": 0.3611621856689453,
     "wrong": [
      {
       "text": "Unlock premium for free for 3 months. Sign up today, cancel anytime.",
@@ -190,7 +190,7 @@
  },
  "images": {
   "images": 128,
-  "seconds_per_image": 5.74176069535315,
+  "seconds_per_image": 5.53159230388701,
   "watermark_feature": true,
   "ai_feature": true,
   "by_category": {
