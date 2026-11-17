@@ -18,7 +18,7 @@ Site:
   /app          -> the workspace (needs a login):
     Overview      -> Dashboard
     Analyze       -> Ad Copy, Image Analysis, Bulk Analysis, Website Audit, Influencer Check
-    Create & Edit -> Generative Editing, Precise Editing, Canvas Editor
+    Create & Edit -> Precise Editing, Canvas Editor
 """
 
 import argparse
@@ -61,13 +61,11 @@ def _load_module_by_path(name: str, path: str):
 # `import` statement - load them by path instead.
 _model_training = _load_module_by_path("model_training", "02_model_training.py")
 _image_analysis = _load_module_by_path("image_analysis", "04_image_analysis.py")
-_generative_editing = _load_module_by_path("generative_editing", "05_generative_editing.py")
 _image_editing = _load_module_by_path("image_editing", "06_image_editing.py")
 
 OPTIONAL_DEPS = {
     "rembg": "Background removal (Precise Editing)",
     "easyocr": "Text detection (Precise Editing, watermark check)",
-    "diffusers": "Stable Diffusion (Generative Editing)",
     "requests": "Website Audit (fetching pages)",
     "bs4": "Website Audit (HTML parsing)",
 }
@@ -120,7 +118,6 @@ _LOADERS = {
     "clip": _load_clip,
     "watermark": _load_watermark,
     "ai_detector": _load_ai_detector,
-    "sd": lambda: _generative_editing.StableDiffusionEditor(),
     "image_model": _load_image_model,
     "website": lambda: _load_module_by_path("website_analysis", "09_website_analysis.py"),
 }
@@ -605,55 +602,6 @@ def website_audit(req: WebsiteRequest, request: Request):
     _record(request, "website", req.url.strip().split("?")[0], scores.get("seo"),
             detail=f"SEO {scores.get('seo')} · GEO {scores.get('geo')}")
     return result
-
-
-# ── Generative editing ───────────────────────────────────────────────────
-_generation_slots = threading.BoundedSemaphore(max(1, DEPLOY["max_concurrent_generations"]))
-
-
-def require_generative():
-    if not DEPLOY["generative_enabled"]:
-        raise FriendlyError("Generative editing is turned off on this server.",
-                            "It needs a GPU to run at a usable speed. Precise Editing and the Canvas Editor still work.", 503)
-
-
-@app.get("/api/generate/estimate")
-def generate_estimate(steps: int = 25):
-    require_generative()
-    try:
-        cuda = __import__("torch").cuda.is_available()
-    except Exception:  # noqa: BLE001
-        cuda = False
-    return {"estimate": _generative_editing.estimate_time_warning("cuda" if cuda else "cpu", steps)}
-
-
-@app.post("/api/generate")
-async def generate(request: Request, image: UploadFile = File(...), prompt: str = Form(...), strength: float = Form(0.55),
-                   steps: int = Form(25), guidance: float = Form(7.5)):
-    require_generative()
-    require_dep("diffusers", "diffusers accelerate")
-    if not prompt.strip():
-        raise FriendlyError("Describe the new style or scene first.")
-    steps, strength, guidance = int(min(max(steps, 1), 50)), min(max(strength, 0.05), 1.0), min(max(guidance, 1.0), 15.0)
-    img = await read_image(image)
-    if not _generation_slots.acquire(blocking=False):
-        raise FriendlyError("Another image is being generated right now.", "Try again in a minute.", 429)
-    try:
-        editor = _cached_loader("sd")
-        generated = editor.generate(img, prompt=prompt, strength=strength, guidance_scale=guidance,
-                                    num_inference_steps=steps)
-    except ImportError as e:
-        raise FriendlyError("Stable Diffusion isn't available.",
-                            "Install the optional dependencies with `pip install diffusers accelerate`.", 501) from e
-    except Exception as e:  # noqa: BLE001
-        raise FriendlyError("Image generation failed.",
-                            "This can happen with no internet connection (first-time model download), low "
-                            "memory, or an unsupported prompt. Try a shorter prompt or fewer steps.", 500) from e
-    finally:
-        _generation_slots.release()
-    before, after = image_report(img)["score"], image_report(generated)["score"]
-    _record(request, "generate", prompt, after, detail=f"{before:.0f} → {after:.0f}")
-    return {"image": to_data_url(generated), "before": before, "after": after}
 
 
 # ── Precise editing ──────────────────────────────────────────────────────

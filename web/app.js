@@ -213,7 +213,7 @@ async function refreshStatus() {
 // ══════════════════════════════════════════════════════════════════════
 // Pages
 // ══════════════════════════════════════════════════════════════════════
-const S = { dashboard: {}, influencer: {}, copy: {}, image: {}, bulk: {}, website: {}, generate: {}, precise: {}, canvas: {} };
+const S = { dashboard: {}, influencer: {}, copy: {}, image: {}, bulk: {}, website: {}, precise: {}, canvas: {} };
 
 // ── Ad Copy ──────────────────────────────────────────────────────────
 function pageCopy(view) {
@@ -803,75 +803,6 @@ function renderWebsite(out, res) {
   animate(out);
 }
 
-// ── Generative Editing ───────────────────────────────────────────────
-function pageGenerate(view) {
-  const st = S.generate;
-  st.strength ??= 0.55; st.steps ??= 25; st.guidance ??= 7.5;
-  view.innerHTML = `
-    <p class="lead">Restyle an image from a text prompt with Stable Diffusion (img2img). This is generative AI, not a pixel tweak —
-      the model reinterprets the whole image, so results vary. The first run downloads the model (~4–5 GB).</p>
-    <div id="gen-gate"></div>
-    <div class="split" id="gen-body">
-      <div class="card"><div id="gen-drop"></div>${st.file ? `<div class="preview mt"><img src="${st.url}" alt="Original"></div>` : ""}</div>
-      <div class="card">
-        <label class="field" for="gen-prompt">Describe the new style or scene</label>
-        <input id="gen-prompt" class="input" placeholder="e.g. on a warm sunset beach, golden hour lighting">
-        <div class="stack mt">
-          ${slider("strength", "Strength (how much changes)", 0.2, 0.9, 0.05, st.strength)}
-          ${slider("steps", "Inference steps", 10, 50, 5, st.steps)}
-          ${slider("guidance", "Guidance scale", 1, 15, 0.5, st.guidance)}
-        </div>
-        <p class="muted small" id="gen-est"></p>
-        <button class="btn btn-primary" id="gen-run">${icon("sparkles")}Generate</button>
-      </div>
-    </div>
-    <div id="gen-out"></div>`;
-  if (STATUS.data?.features && !STATUS.data.features.generative) {
-    $("#gen-gate").innerHTML = `<div class="note note-warn">${icon("alert")}<div><b>Generative editing is turned off on this server.</b>
-      <div>It needs a GPU to run at a usable speed. Precise Editing and the Canvas Editor still work.</div></div></div>`;
-    $("#gen-run").disabled = true;
-  } else if (!setupFeatureGate($("#gen-gate"), "diffusers", "Generative editing", "diffusers accelerate")) $("#gen-run").disabled = true;
-  $("#gen-drop").append(dropzone({
-    accept: "image/png,image/jpeg,image/webp", title: st.file ? "Replace image" : "Upload an image", sub: "JPG, PNG or WebP", compact: true,
-    onFile: (f) => { if (!isImage(f)) return toast("That doesn't look like an image."); if (st.url) URL.revokeObjectURL(st.url);
-      Object.assign(st, { file: f, url: URL.createObjectURL(f), result: null }); pageGenerate(view); },
-  }));
-  const prompt = $("#gen-prompt");
-  prompt.value = st.prompt || "";
-  prompt.addEventListener("input", () => { st.prompt = prompt.value; });
-  const updateEstimate = async () => {
-    try { $("#gen-est").textContent = `Estimated time: ${(await api(`/api/generate/estimate?steps=${st.steps}`)).estimate}`; } catch { /* optional */ }
-  };
-  $$("input[type=range]", view).forEach((inp) => inp.addEventListener("input", () => {
-    st[inp.dataset.k] = Number(inp.value); $(`output[for=${inp.id}]`).textContent = inp.value;
-    if (inp.dataset.k === "steps") updateEstimate();
-  }));
-  updateEstimate();
-  $("#gen-run").addEventListener("click", (e) => withBusy(e.currentTarget, async () => {
-    if (!st.file) return toast("Upload an image first.");
-    if (!prompt.value.trim()) { prompt.focus(); return toast("Describe the new style or scene first."); }
-    $("#gen-out").innerHTML = `<div class="card mt"><b>Generating…</b><p class="muted small">This can take several minutes on a CPU.</p><div class="skeleton" style="height:240px"></div></div>`;
-    try {
-      st.result = await api("/api/generate", { form: formOf({ image: st.file, prompt: prompt.value, strength: st.strength, steps: st.steps, guidance: st.guidance }) });
-      renderGen();
-    } catch (err) { $("#gen-out").innerHTML = `<div class="mt">${errorNote(err)}</div>`; }
-  }));
-  if (st.result) renderGen();
-
-  function renderGen() {
-    const box = $("#gen-out");
-    if (!box) return;
-    box.innerHTML = `<div class="card mt fade-in"><div class="card-title">Result</div>
-      <p class="card-sub">Quality scores are the same creative-quality heuristic used on the Image Analysis page.</p>
-      ${compareView(st.url, st.result.before, st.result.image, st.result.after, "Generated")}
-      <div class="row row-end mt"><button class="btn btn-primary" id="gen-dl">${icon("download")}Download</button></div></div>`;
-    $("#gen-dl").addEventListener("click", () => download(st.result.image, "generative_edit.png"));
-  }
-}
-
-const slider = (k, label, min, max, step, value) => `<div class="ctrl"><label for="sl-${k}">${label}</label><output for="sl-${k}">${value}</output>
-  <input type="range" id="sl-${k}" data-k="${k}" min="${min}" max="${max}" step="${step}" value="${value}" style="grid-column:1/3"></div>`;
-
 // ── Precise Editing ──────────────────────────────────────────────────
 function pagePrecise(view) {
   const st = S.precise;
@@ -1139,16 +1070,16 @@ const KINDS = {
   bulk: { label: "Bulk CSV", page: "bulk" },
   website: { label: "Website", page: "website" },
   influencer: { label: "Influencer", page: "influencer" },
-  generate: { label: "Generative edit", page: "generate" },
   precise: { label: "Precise edit", page: "precise" },
 };
+// tools that were removed: older history entries still get a readable label
+const RETIRED_KINDS = { generate: "Generative edit" };
 const TOOL_BLURBS = {
   copy: "Tone, engagement score and a grounded rewrite",
   image: "Six quality checks at feed size",
   bulk: "Score a whole campaign CSV at once",
   website: "SEO, GEO and Core Web Vitals",
   influencer: "Spot bought followers from likes vs followers",
-  generate: "Restyle a creative with Stable Diffusion",
   precise: "Swap backgrounds or replace text",
   canvas: "Annotate, crop and add text",
 };
@@ -1240,7 +1171,7 @@ async function pageDashboard(view) {
 
   $("#dash-recent").innerHTML = items.length
     ? `<div class="activity">${items.slice(0, 8).map((i) => {
-        const k = KINDS[i.kind] || { label: i.kind, page: "dashboard" }, meta = pageMeta(k.page) || PAGES[0];
+        const k = KINDS[i.kind] || { label: RETIRED_KINDS[i.kind] || i.kind, page: "dashboard" }, meta = pageMeta(k.page) || PAGES[0];
         const t = i.score != null ? tierOf(i.score) : null;
         return `<a class="act" href="#/${k.page}"><span class="q-ico qc-${k.page}">${icon(meta.icon)}</span>
           <div style="min-width:0"><div class="act-title">${esc(i.title || k.label)}</div>
@@ -1292,7 +1223,6 @@ const PAGES = [
   { id: "bulk", group: "Analyze", title: "Bulk Analysis", icon: "table", render: pageBulk },
   { id: "website", group: "Analyze", title: "Website Audit", icon: "globe", render: pageWebsite },
   { id: "influencer", group: "Analyze", title: "Influencer Check", icon: "users", render: pageInfluencer },
-  { id: "generate", group: "Create & Edit", title: "Generative Editing", icon: "sparkles", render: pageGenerate },
   { id: "precise", group: "Create & Edit", title: "Precise Editing", icon: "target", render: pagePrecise },
   { id: "canvas", group: "Create & Edit", title: "Canvas Editor", icon: "pen", render: pageCanvas },
 ];
@@ -1333,6 +1263,6 @@ window.addEventListener("hashchange", () => ROUTER.go());
 loadUser().then(() => { if (ROUTER.current === "dashboard") ROUTER.go(); });
 refreshStatus().then(() => {
   // pages that gate on optional dependencies need the status; re-render once it's in
-  if (["generate", "precise", "image"].includes(ROUTER.current) && !$(".loading")) ROUTER.go();
+  if (["precise", "image"].includes(ROUTER.current) && !$(".loading")) ROUTER.go();
 });
 ROUTER.go();
