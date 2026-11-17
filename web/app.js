@@ -317,13 +317,28 @@ const AI_VERDICT = {
 function aiCard(a) {
   if (!a) return "";
   const [text, cls] = AI_VERDICT[a.verdict] || AI_VERDICT.unknown;
-  const p = a.probability;
+  const p = a.probability, meta = a.metadata_signals || [];
+  const reason = meta.length
+    ? "Decided by the file's metadata: the image says which AI tool made it."
+    : p == null ? "No metadata evidence, and the pixel detector isn't available."
+    : "No AI metadata found, so this verdict comes from the pixel detector alone.";
+  const metaBlock = meta.length
+    ? `<div class="mt"><b>1. File metadata</b> ${badge("Strong evidence", "low")}
+        <ul class="list mt">${meta.map((m) => `<li class="bad">${esc(m[0].toUpperCase() + m.slice(1))}</li>`).join("")}</ul></div>`
+    : `<div class="mt"><b>1. File metadata</b> <span class="muted small">No AI tool named in the file.</span></div>`;
+  const detBlock = p != null
+    ? `<div class="mt"><b>2. Pixel detector</b> <span class="muted small">Secondary estimate: ${pct(p)} likely AI</span>
+        <div class="mt">${bar(100 * p, p >= 0.5 ? "low" : p >= 0.3 ? "medium" : "high")}</div>
+        <p class="muted small mt" style="margin-bottom:0">${meta.length
+          ? "Ignored when metadata is found: this model was trained on older generators and often misses newer ones."
+          : "Looks only at the pixels. Often misses images from newer generators, so treat it as a hint."}</p></div>`
+    : "";
   return `<div class="card"><div class="kpi-label">AI-generated? <span class="tag tag-model">Indicator</span></div>
-    <div class="row mt">${badge(text, cls)}${p != null ? `<span class="muted small">Detector: ${pct(p)} likely AI</span>` : ""}</div>
-    ${p != null ? `<div class="mt">${bar(100 * p, p >= 0.5 ? "low" : p >= 0.3 ? "medium" : "high")}</div>` : ""}
-    ${a.metadata_signals?.length ? `<ul class="list mt">${a.metadata_signals.map((m) => `<li class="bad">${esc(m[0].toUpperCase() + m.slice(1))}</li>`).join("")}</ul>` : ""}
-    <p class="kpi-sub mt" style="margin-bottom:0">An indicator, not proof: detectors miss many AI images and can be wrong about real photos.
-      File metadata is strong evidence when present, but screenshots and social apps strip it. Platforms such as Instagram may label AI images, so disclose AI use where required.</p></div>`;
+    <div class="row mt">${badge(text, cls)}</div>
+    <p class="kpi-sub mt" style="margin-bottom:0">${reason}</p>
+    ${metaBlock}
+    ${detBlock}
+    <p class="kpi-sub mt" style="margin-bottom:0">Screenshots and social apps strip file metadata, so a missing tag isn't proof an image is real. Platforms such as Instagram may label AI images, so disclose AI use where required.</p></div>`;
 }
 
 function pageImage(view) {
