@@ -19,4 +19,4 @@ beautifulsoup4           # 09_website_analysis.py
 # any of these are missing (see README "Optional dependencies").
 rembg[cpu]               # background removal (Precise Editing page); [cpu] pulls in onnxruntime
 easyocr                  # text detection (Precise Editing page)
-diffusers                # Stable Diffusion (Generative Editing page)
+diffusers                # Stable Diffusion (Generative Editing page)vaderSentiment           # eval/stats.py only: off-the-shelf sentiment baseline (optional)
